@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "public": true,
   "cleanUrls": true,
   "headers": [
     {
@@ -14,6 +13,10 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/api/:match*",
+      "destination": "/api/:match*"
+    },
     {
       "source": "/",
       "destination": "/public/index.html"

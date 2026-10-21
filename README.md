@@ -2,6 +2,8 @@
 # 🏎️ Đấu Trường Trắc Nghiệm GPLX B/B1 Realtime (2 - 4 Người Chơi)
 ### Chuẩn 600 Câu Hỏi Sát Hạch Bộ Công An (CV 2262/CSGT-P5 & Thông tư 12/2025/TT-BCA)
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fquythuynh%2Fgame-box-gplx)
+
 Ứng dụng web đối kháng trắc nghiệm lý thuyết lái xe ô tô hạng B/B1 dành cho **2 đến 4 người cùng thi đấu thời gian thực (Realtime)**:
 * 🎯 **Sinh đề tự động:** 30 câu hỏi ngẫu nhiên chuẩn cấu trúc đề thi (đủ 6 chương + đảm bảo có câu điểm liệt).
 * 🖱️ **Chuột Realtime đa chiều:** Nhìn thấy con trỏ chuột của đối thủ di chuyển trên màn hình theo thời gian thực (hiển thị màu sắc và avatar riêng).
