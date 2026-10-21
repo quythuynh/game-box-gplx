@@ -124,12 +124,31 @@ function initApp() {
     renderRemoteCursor(data.playerId, data.name, data.avatar, data.color, data.x, data.y, data.qIndex);
   });
 
-  // Đối thủ chọn đáp án (CHỈ NHẬN TIẾN ĐỘ, KHÔNG NHẬN ĐÁP ÁN CỤ THỂ ĐỂ TRÁNH NHÌN BÀI)
+  // Đối thủ chọn đáp án
   socket.on('player-progress-updated', (data) => {
     if (state.players[data.playerId]) {
       state.players[data.playerId].answeredList = data.answeredList;
       state.players[data.playerId].totalAnswered = data.totalAnswered;
+      if (!state.players[data.playerId].answers) {
+        state.players[data.playerId].answers = {};
+      }
+      if (data.optionIndex !== undefined) {
+        state.players[data.playerId].answers[data.qIndex] = data.optionIndex;
+      }
     }
+
+    // Nếu đang theo dõi người chơi này, cập nhật đáp án trực tiếp & ticker hành động
+    if (state.followingPlayerId === data.playerId) {
+      const sub = document.getElementById('fmbSub');
+      if (sub) {
+        const optText = data.optionIndex !== undefined ? `Đáp án ${data.optionIndex}` : '1 đáp án';
+        sub.innerHTML = `Đang làm bài (${data.totalAnswered ?? 0}/30 câu) · <span class="fmb-live-ticker live-act">⚡ Vừa bấm chọn <b>${optText}</b> ở Câu ${data.qIndex + 1}</span>`;
+      }
+      if (data.qIndex === state.currentQIndex && data.optionIndex !== undefined) {
+        showFollowerOptionSelection(data.playerId, data.qIndex, data.optionIndex);
+      }
+    }
+
     updateOpponentsBar();
     updatePaletteGrid();
   });
@@ -145,9 +164,9 @@ function initApp() {
       const target = state.players[data.playerId];
       const sub = document.getElementById('fmbSub');
       if (sub && target) {
-        sub.textContent = target.submitted
-          ? `Người chơi đã nộp bài · Đang xem lại câu ${data.qIndex + 1}`
-          : `Đang làm bài (${target.totalAnswered ?? 0}/30 câu) · Đang xem câu ${data.qIndex + 1}`;
+        sub.innerHTML = target.submitted
+          ? `Người chơi đã nộp bài (Điểm: ${target.score ?? 0}/30) · Đang xem lại câu ${data.qIndex + 1}`
+          : `Đang làm bài (${target.totalAnswered ?? 0}/30 câu) · <span class="fmb-live-ticker">👁️ Đang xem Câu ${data.qIndex + 1} (Đang đọc đề)...</span>`;
       }
     }
     updateOpponentsBar();
@@ -158,7 +177,13 @@ function initApp() {
     if (state.players[data.playerId]) {
       state.players[data.playerId].submitted = true;
       state.players[data.playerId].score = data.score;
-      state.players[data.playerId].answers = data.answers;
+      state.players[data.playerId].answers = data.answers || state.players[data.playerId].answers || {};
+    }
+    if (state.followingPlayerId === data.playerId) {
+      const sub = document.getElementById('fmbSub');
+      if (sub) {
+        sub.innerHTML = `🏁 <b>${data.name || state.players[data.playerId]?.name}</b> vừa nộp bài! (Điểm: ${data.score ?? 0}/30)`;
+      }
     }
     updateOpponentsBar();
   });
@@ -757,7 +782,7 @@ function renderQuestion(index) {
     }
 
     return `
-      <div class="${cardCls}" data-opt="${optNum}">
+      <div class="${cardCls}" id="optCard-${index}-${optNum}" data-opt="${optNum}">
         <span class="opt-num">${optNum}</span>
         <span class="opt-text">${opt}</span>
         ${isRevealed && isCorrectOption ? '<span class="correct-badge-pill">✓ ĐÁP ÁN ĐÚNG</span>' : ''}
@@ -769,7 +794,7 @@ function renderQuestion(index) {
     `;
   }).join('');
 
-  if (!state.isReviewMode) {
+  if (!state.isReviewMode && !state.hasSubmitted) {
     optionsContainer.querySelectorAll('.option-card').forEach(card => {
       card.addEventListener('click', () => {
         const optNum = parseInt(card.dataset.opt, 10);
@@ -778,8 +803,13 @@ function renderQuestion(index) {
     });
   }
 
-  // Trong lúc làm bài: Ẩn các đáp án của người khác để chống nhìn bài!
-  // Chỉ biết người đó đang ở câu nào và đã hoàn thành những câu nào.
+  // Nếu đang theo dõi một đối thủ, hiển thị lựa chọn của người đó ở câu này (nếu có)
+  if (state.followingPlayerId) {
+    const fp = state.players[state.followingPlayerId];
+    if (fp && fp.answers && fp.answers[index] !== undefined) {
+      showFollowerOptionSelection(state.followingPlayerId, index, fp.answers[index]);
+    }
+  }
 
   document.getElementById('btnPrevQ').disabled = index <= 0;
   document.getElementById('btnNextQ').disabled = index >= 29;
@@ -791,7 +821,7 @@ function renderQuestion(index) {
 }
 
 function selectMyAnswer(qIndex, optionIndex) {
-  if (state.isReviewMode) return;
+  if (state.isReviewMode || state.hasSubmitted) return;
 
   SoundEngine.playSelect();
 
@@ -909,6 +939,53 @@ function updateOpponentsBar() {
 }
 
 // ================= SPECTATOR / FOLLOW MODE =================
+function showFollowerOptionSelection(playerId, qIndex, optionIndex) {
+  const p = state.players[playerId];
+  if (!p) return;
+  // Xóa viền highlight trước đó ở câu này
+  for (let i = 1; i <= 4; i++) {
+    const card = document.getElementById(`optCard-${qIndex}-${i}`);
+    const tag = document.getElementById(`optTag-${qIndex}-${i}`);
+    if (card) {
+      card.classList.remove('followed-picked');
+      if (!card.classList.contains('review-correct') && !card.classList.contains('review-wrong') && !card.classList.contains('selected')) {
+        card.style.borderColor = '';
+        card.style.boxShadow = '';
+      }
+    }
+    if (tag) {
+      const existingFollowBadge = tag.querySelector('.follow-choice-badge');
+      if (existingFollowBadge) existingFollowBadge.remove();
+    }
+  }
+
+  const targetCard = document.getElementById(`optCard-${qIndex}-${optionIndex}`);
+  const targetTag = document.getElementById(`optTag-${qIndex}-${optionIndex}`);
+  if (targetCard) {
+    targetCard.classList.add('followed-picked');
+    targetCard.style.borderColor = p.color || '#3b82f6';
+    targetCard.style.boxShadow = `0 0 16px ${p.color || '#3b82f6'}66`;
+  }
+  if (targetTag) {
+    const badge = document.createElement('span');
+    badge.className = 'follow-choice-badge';
+    badge.style.background = p.color || '#3b82f6';
+    badge.innerHTML = `${p.avatar || '🏎️'} ${p.name} đã chọn`;
+    targetTag.appendChild(badge);
+  }
+}
+
+function clearFollowerOptionSelection() {
+  document.querySelectorAll('.option-card.followed-picked').forEach(card => {
+    card.classList.remove('followed-picked');
+    if (!card.classList.contains('review-correct') && !card.classList.contains('review-wrong') && !card.classList.contains('selected')) {
+      card.style.borderColor = '';
+      card.style.boxShadow = '';
+    }
+  });
+  document.querySelectorAll('.follow-choice-badge').forEach(badge => badge.remove());
+}
+
 function startFollowing(pid) {
   if (!state.hasSubmitted && !state.isReviewMode) return;
   const target = state.players[pid];
@@ -926,9 +1003,9 @@ function startFollowing(pid) {
     if (nm) nm.textContent = target.name;
     const sub = document.getElementById('fmbSub');
     if (sub) {
-      sub.textContent = target.submitted
+      sub.innerHTML = target.submitted
         ? `Người chơi đã nộp bài (Điểm: ${target.score ?? 0}/30) · Đang xem lại câu ${targetQ + 1}`
-        : `Đang làm bài (${target.totalAnswered ?? 0}/30 câu) · Đang xem câu ${targetQ + 1}`;
+        : `Đang làm bài (${target.totalAnswered ?? 0}/30 câu) · <span class="fmb-live-ticker">👁️ Đang xem Câu ${targetQ + 1}</span>`;
     }
   }
 
@@ -938,8 +1015,12 @@ function startFollowing(pid) {
 
 function stopFollowing() {
   state.followingPlayerId = null;
+  clearFollowerOptionSelection();
   const banner = document.getElementById('followModeBanner');
   if (banner) banner.style.display = 'none';
+  document.querySelectorAll('.cursor-tag.live-spectate').forEach(tag => {
+    tag.classList.remove('live-spectate');
+  });
   updateOpponentsBar();
 }
 window.startFollowing = startFollowing;
@@ -1298,6 +1379,19 @@ function renderRemoteCursor(playerId, name, avatar, color, xPercent, yPercent, q
     overlay.appendChild(cursorEl);
   }
 
+  const isFollowed = (state.followingPlayerId === playerId);
+  const tagEl = cursorEl.querySelector('.cursor-tag');
+  if (tagEl) {
+    tagEl.classList.toggle('live-spectate', isFollowed);
+    if (isFollowed) {
+      tagEl.innerHTML = `<span class="live-pulse-dot">🔴</span> LIVE: ${avatar} ${name}`;
+    } else {
+      tagEl.innerHTML = `${avatar} ${name}`;
+    }
+  }
+
+  cursorEl.style.zIndex = isFollowed ? '100' : '50';
+  cursorEl.style.opacity = (state.followingPlayerId && !isFollowed) ? '0.2' : '1';
   cursorEl.style.left = `${xPercent * 100}%`;
   cursorEl.style.top = `${yPercent * 100}%`;
 }

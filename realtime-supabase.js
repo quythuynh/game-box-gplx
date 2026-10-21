@@ -40,6 +40,7 @@
     let answered = {};      // câu đã trả lời của mình (để gửi tiến độ)
     const playerCurrentQMap = {};
     const playerAnsweredListMap = {};
+    const playerAnswersMap = {};
 
     async function rpc(fn, args) {
       const { data, error } = await sb.rpc(fn, args);
@@ -52,7 +53,7 @@
         id: p.id, name: p.name, avatar: p.avatar, color: p.color, isHost: p.is_host,
         isReady: p.is_ready,
         currentQ: playerCurrentQMap[p.id] ?? 0,
-        answers: {},
+        answers: playerAnswersMap[p.id] ? Object.assign({}, playerAnswersMap[p.id]) : {},
         answeredList: playerAnsweredListMap[p.id] ?? [],
         submitted: p.submitted,
         submitTime: p.submit_time, score: p.score, passed: p.passed,
@@ -142,6 +143,10 @@
         if (payload && payload.playerId) {
           if (payload.qIndex !== undefined) playerCurrentQMap[payload.playerId] = payload.qIndex;
           if (payload.answeredList) playerAnsweredListMap[payload.playerId] = payload.answeredList;
+          if (payload.optionIndex !== undefined) {
+            if (!playerAnswersMap[payload.playerId]) playerAnswersMap[payload.playerId] = {};
+            playerAnswersMap[payload.playerId][payload.qIndex] = payload.optionIndex;
+          }
         }
         sock._fire('player-progress-updated', payload);
       });
@@ -176,6 +181,7 @@
       room = null; prev = null;
       for (const k in playerCurrentQMap) delete playerCurrentQMap[k];
       for (const k in playerAnsweredListMap) delete playerAnsweredListMap[k];
+      for (const k in playerAnswersMap) delete playerAnswersMap[k];
     }
 
     function joined(res) {
@@ -215,7 +221,9 @@
           playerAnsweredListMap[sock.id] = Object.keys(answered).map(Number);
           rpc('gp_select_answer', { p_pid: sock.id, p_code: room, p_q: data.qIndex, p_opt: data.optionIndex }).catch(fail);
           sendBc('progress', Object.assign(who(), {
-            qIndex: data.qIndex, totalAnswered: Object.keys(answered).length,
+            qIndex: data.qIndex,
+            optionIndex: data.optionIndex,
+            totalAnswered: Object.keys(answered).length,
             answeredList: Object.keys(answered).map(Number)
           }));
           break;

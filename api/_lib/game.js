@@ -199,9 +199,9 @@ const handlers = {
     if (!p || p.submitted) return;
     p.answers[qIndex] = optionIndex;
     await savePlayer(code, p);
-    // Không gửi optionIndex: tránh nhìn bài
     await emit(code, 'player-progress-updated', {
       playerId: pid, name: p.name, color: p.color, qIndex,
+      optionIndex,
       totalAnswered: Object.keys(p.answers).length,
       answeredList: Object.keys(p.answers).map(Number)
     }, pid);
