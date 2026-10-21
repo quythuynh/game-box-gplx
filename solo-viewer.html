@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>600 Câu Hỏi Lý Thuyết Sát Hạch Lái Xe Ô Tô B / B1 (Bộ Công An)</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #1e293b;
+      --muted: #64748b;
+      --primary: #2563eb;
+      --primary-light: #eff6ff;
+      --danger: #dc2626;
+      --danger-light: #fef2f2;
+      --success: #16a34a;
+      --success-light: #f0fdf4;
+      --border: #e2e8f0;
+      --radius: 10px;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    header {
+      background: #ffffff;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      padding: 16px 24px;
+    }
+
+    .header-container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .badge-bca {
+      background: #fee2e2;
+      color: #991b1b;
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+
+    .controls {
+      margin-top: 14px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    input[type="text"], select {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      outline: none;
+      background: #fff;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      min-width: 220px;
+    }
+
+    input[type="text"]:focus, select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+
+    .filter-btn {
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: white;
+      font-size: 0.85rem;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+
+    .filter-btn.active {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+
+    .filter-btn.danger.active {
+      background: var(--danger);
+      color: white;
+      border-color: var(--danger);
+    }
+
+    main {
+      max-width: 1000px;
+      margin: 20px auto;
+      padding: 0 16px;
+    }
+
+    .summary-bar {
+      margin-bottom: 16px;
+      font-size: 0.88rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .questions-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    .card.critical {
+      border-left: 4px solid var(--danger);
+    }
+
+    .card-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .q-number {
+      font-weight: 700;
+      color: var(--primary);
+      font-size: 0.95rem;
+    }
+
+    .chapter-tag {
+      font-size: 0.75rem;
+      background: #f1f5f9;
+      color: var(--muted);
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    .critical-tag {
+      background: var(--danger-light);
+      color: var(--danger);
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .q-text {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #0f172a;
+      margin-bottom: 14px;
+    }
+
+    .q-image-wrap {
+      margin: 12px 0 16px;
+      text-align: center;
+      background: #f8fafc;
+      padding: 10px;
+      border-radius: 8px;
+    }
+
+    .q-image {
+      max-width: 100%;
+      max-height: 280px;
+      object-fit: contain;
+      border-radius: 6px;
+    }
+
+    .options-list {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .option-item {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.95rem;
+      background: #fff;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .option-item.correct {
+      background: var(--success-light);
+      border-color: var(--success);
+      font-weight: 600;
+      color: #14532d;
+    }
+
+    .opt-index {
+      background: #e2e8f0;
+      color: #475569;
+      border-radius: 50%;
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .option-item.correct .opt-index {
+      background: var(--success);
+      color: #fff;
+    }
+
+    .explanation-box {
+      background: #f8fafc;
+      border-left: 3px solid #94a3b8;
+      padding: 10px 14px;
+      font-size: 0.88rem;
+      color: #334155;
+      border-radius: 0 6px 6px 0;
+    }
+
+    .explanation-title {
+      font-weight: 600;
+      color: #0f172a;
+      margin-bottom: 4px;
+    }
+
+    .pagination {
+      margin: 24px 0 40px;
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .page-btn {
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      background: white;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .page-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-container">
+      <div class="title-row">
+        <div>
+          <h1>600 Câu Hỏi Lý Thuyết Sát Hạch Lái Xe Ô Tô Hạng B & B1</h1>
+          <span style="font-size: 0.82rem; color: var(--muted);">Chuẩn quy định Cục Cảnh sát giao thông (Công văn 2262/CSGT-P5 & Thông tư 12/2025/TT-BCA)</span>
+        </div>
+        <span class="badge-bca">Bộ Công An</span>
+      </div>
+
+      <div class="controls">
+        <input type="text" id="searchInput" placeholder="Tìm theo từ khóa hoặc số câu (VD: 36, làn đường, nồng độ cồn)...">
+        <select id="chapterFilter">
+          <option value="all">Tất cả các chương (6 chương)</option>
+          <option value="1">Chương 1: Quy tắc & quy định chung (180 câu)</option>
+          <option value="2">Chương 2: Đạo đức & PCCC (25 câu)</option>
+          <option value="3">Chương 3: Kỹ thuật lái xe (58 câu)</option>
+          <option value="4">Chương 4: Cấu tạo & sửa chữa (37 câu)</option>
+          <option value="5">Chương 5: Báo hiệu đường bộ (185 câu)</option>
+          <option value="6">Chương 6: Sa hình & xử lý tình huống (115 câu)</option>
+        </select>
+        <button class="filter-btn danger" id="criticalBtn">⚠️ 60 câu điểm liệt</button>
+        <button class="filter-btn" id="imageBtn">🖼️ Câu có hình ảnh</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="summary-bar">
+      <span id="resultCount">Đang tải dữ liệu...</span>
+      <span id="pageInfo">Trang 1</span>
+    </div>
+
+    <div class="questions-list" id="questionsList"></div>
+
+    <div class="pagination">
+      <button class="page-btn" id="prevBtn" disabled>« Trang trước</button>
+      <span id="pageIndicator" style="font-size: 0.9rem; font-weight: 500;">1 / 1</span>
+      <button class="page-btn" id="nextBtn">Trang sau »</button>
+    </div>
+  </main>
+
+  <script>
+    let allQuestions = [];
+    let filteredQuestions = [];
+    let currentPage = 1;
+    const pageSize = 20;
+
+    let filterCritical = false;
+    let filterImage = false;
+
+    async function init() {
+      try {
+        const res = await fetch('./data/questions_600_bca.json');
+        allQuestions = await res.json();
+        applyFilters();
+      } catch (e) {
+        document.getElementById('questionsList').innerHTML = `
+          <div style="padding: 30px; text-align: center; color: var(--danger);">
+            <h3>Không thể tải tệp dữ liệu ./data/questions_600_bca.json</h3>
+            <p>${e.message}</p>
+          </div>
+        `;
+      }
+    }
+
+    function applyFilters() {
+      const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
+      const chapter = document.getElementById('chapterFilter').value;
+
+      filteredQuestions = allQuestions.filter(q => {
+        if (filterCritical && !q.is_critical) return false;
+        if (filterImage && !q.image) return false;
+        if (chapter !== 'all' && q.chapter !== parseInt(chapter, 10)) return false;
+
+        if (keyword) {
+          const matchId = q.id.toString() === keyword;
+          const matchQ = q.question.toLowerCase().includes(keyword);
+          const matchOpts = q.options.some(opt => opt.toLowerCase().includes(keyword));
+          if (!matchId && !matchQ && !matchOpts) return false;
+        }
+
+        return true;
+      });
+
+      currentPage = 1;
+      render();
+    }
+
+    function render() {
+      const total = filteredQuestions.length;
+      const totalPages = Math.ceil(total / pageSize) || 1;
+      document.getElementById('resultCount').textContent = `Hiển thị ${total} / 600 câu hỏi`;
+      document.getElementById('pageInfo').textContent = `Trang ${currentPage} / ${totalPages}`;
+      document.getElementById('pageIndicator').textContent = `${currentPage} / ${totalPages}`;
+
+      document.getElementById('prevBtn').disabled = currentPage <= 1;
+      document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+
+      const startIndex = (currentPage - 1) * pageSize;
+      const pageItems = filteredQuestions.slice(startIndex, startIndex + pageSize);
+
+      const listEl = document.getElementById('questionsList');
+      if (pageItems.length === 0) {
+        listEl.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--muted);">Không tìm thấy câu hỏi phù hợp.</div>';
+        return;
+      }
+
+      listEl.innerHTML = pageItems.map(q => {
+        const imageHtml = q.image ? `
+          <div class="q-image-wrap">
+            <img class="q-image" src="./public/${q.image}" onerror="this.onerror=null;this.src='./${q.image}'" alt="Hình minh họa câu ${q.id}" loading="lazy" />
+          </div>
+        ` : '';
+
+        const optionsHtml = q.options.map((opt, idx) => {
+          const optIndex = idx + 1;
+          const isCorrect = optIndex === q.correct_option;
+          return `
+            <li class="option-item ${isCorrect ? 'correct' : ''}">
+              <span class="opt-index">${optIndex}</span>
+              <span>${opt}</span>
+              ${isCorrect ? '<span style="margin-left: auto; font-size: 0.8rem; color: #16a34a; font-weight: 700;">✓ Đáp án đúng</span>' : ''}
+            </li>
+          `;
+        }).join('');
+
+        const explanationHtml = q.explanation ? `
+          <div class="explanation-box">
+            <div class="explanation-title">💡 Giải thích chi tiết:</div>
+            <div>${q.explanation}</div>
+          </div>
+        ` : '';
+
+        return `
+          <div class="card ${q.is_critical ? 'critical' : ''}">
+            <div class="card-meta">
+              <span class="q-number">Câu ${q.id}</span>
+              <span class="chapter-tag">Chương ${q.chapter}</span>
+              ${q.is_critical ? '<span class="critical-tag">⚠️ CÂU ĐIỂM LIỆT</span>' : ''}
+            </div>
+            <div class="q-text">${q.question}</div>
+            ${imageHtml}
+            <ul class="options-list">${optionsHtml}</ul>
+            ${explanationHtml}
+          </div>
+        `;
+      }).join('');
+    }
+
+    document.getElementById('searchInput').addEventListener('input', applyFilters);
+    document.getElementById('chapterFilter').addEventListener('change', applyFilters);
+
+    document.getElementById('criticalBtn').addEventListener('click', (e) => {
+      filterCritical = !filterCritical;
+      e.target.classList.toggle('active', filterCritical);
+      applyFilters();
+    });
+
+    document.getElementById('imageBtn').addEventListener('click', (e) => {
+      filterImage = !filterImage;
+      e.target.classList.toggle('active', filterImage);
+      applyFilters();
+    });
+
+    document.getElementById('prevBtn').addEventListener('click', () => {
+      if (currentPage > 1) {
+        currentPage--;
+        render();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    });
+
+    document.getElementById('nextBtn').addEventListener('click', () => {
+      const totalPages = Math.ceil(filteredQuestions.length / pageSize);
+      if (currentPage < totalPages) {
+        currentPage++;
+        render();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>
