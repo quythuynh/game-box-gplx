@@ -33,7 +33,29 @@ class MemoryStore {
   }
 }
 
+// Redis TCP chuẩn (Redis Cloud, Upstash TCP, ...) qua biến REDIS_URL
+function createTcpStore(url) {
+  const Redis = require('ioredis');
+  const r = new Redis(url, { maxRetriesPerRequest: 2, enableReadyCheck: false, lazyConnect: false });
+  r.on('error', e => console.error('redis error:', e.message));
+  return {
+    get: k => r.get(k),
+    set: (k, v) => r.set(k, v),
+    del: (...ks) => r.del(...ks),
+    incr: k => r.incr(k),
+    expire: (k, s) => r.expire(k, s),
+    hget: (k, f) => r.hget(k, f),
+    hset: (k, obj) => r.hset(k, obj),
+    hgetall: async k => { const h = await r.hgetall(k); return Object.keys(h).length ? h : null; },
+    hdel: (k, f) => r.hdel(k, f),
+    zadd: (k, { score, member }) => r.zadd(k, score, member),
+    zrange: (k, min, max) => r.zrangebyscore(k, min, max),
+    zremrangebyrank: (k, a, b) => r.zremrangebyrank(k, a, b)
+  };
+}
+
 function createStore() {
+  if (process.env.REDIS_URL) return createTcpStore(process.env.REDIS_URL);
   if (URL_ENV && TOKEN_ENV) {
     const { Redis } = require('@upstash/redis');
     return new Redis({
@@ -50,4 +72,4 @@ function createStore() {
 // Giữ nguyên giữa các lần gọi khi instance được tái sử dụng
 global.__gameStore = global.__gameStore || createStore();
 module.exports = global.__gameStore;
-module.exports.isMemory = !(URL_ENV && TOKEN_ENV);
+module.exports.isMemory = !(process.env.REDIS_URL || (URL_ENV && TOKEN_ENV));

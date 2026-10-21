@@ -57,6 +57,7 @@ npm start  # rồi mở 2 tab để thử
 
 ## 🌐 Triển khai lên Vercel (chạy hoàn toàn trên Vercel)
 Realtime chạy qua HTTP polling (`/api/emit`, `/api/poll`) và lưu phòng trong **Upstash Redis**:
+0. Hoặc dùng bất kỳ Redis nào (Redis Cloud...): đặt biến môi trường `REDIS_URL=redis://default:<mật khẩu>@host:port` trong Vercel → Settings → Environment Variables.
 1. Vercel Dashboard → project → **Storage / Marketplace → Upstash Redis** → Create & Connect (tự thêm biến môi trường `KV_REST_API_URL`, `KV_REST_API_TOKEN` hoặc `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`).
 2. Redeploy. Không cần server riêng.
 
