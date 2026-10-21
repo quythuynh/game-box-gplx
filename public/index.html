@@ -6,8 +6,19 @@
   <title>Đấu Trường Lý Thuyết GPLX B/B1 - 600 Câu Realtime (Vercel Ready)</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏎️</text></svg>">
   <link rel="stylesheet" href="./style.css">
-  <!-- Realtime qua HTTP (/api/emit + /api/poll) - chạy hoàn toàn trên Vercel -->
-  <script src="./realtime.js"></script>
+  <!-- Chọn backend realtime: Supabase nếu có khoá trong config.js, ngược lại HTTP polling (/api) -->
+  <script src="./config.js"></script>
+  <script>
+    (function () {
+      var useSb = window.SUPABASE_URL && window.SUPABASE_ANON_KEY;
+      if (useSb) {
+        document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4/dist/umd/supabase.js"><\/script>');
+        document.write('<script src="./realtime-supabase.js"><\/script>');
+      } else {
+        document.write('<script src="./realtime.js"><\/script>');
+      }
+    })();
+  </script>
 </head>
 <body>
 

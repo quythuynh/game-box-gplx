@@ -63,5 +63,10 @@ Realtime chạy qua HTTP polling (`/api/emit`, `/api/poll`) và lưu phòng tron
 
 Chạy local (`npm start`) dùng bộ nhớ tạm, không cần Redis.
 
+### Tuỳ chọn: Supabase Realtime (WebSocket thật, không cần Redis)
+1. Tạo project Supabase, vào **SQL Editor** chạy lần lượt `supabase/schema.sql` rồi `supabase/questions_seed.sql` (sinh lại bằng `node scripts/build_supabase_seed.js`).
+2. Điền `SUPABASE_URL` và khoá *publishable/anon* vào `public/config.js`. Không đặt mật khẩu database hay secret/service_role key vào repo.
+3. Để trống khoá thì game tự dùng bản polling + Redis.
+
 ## 📜 Giấy phép
 Mã nguồn mở theo giấy phép MIT. Bộ câu hỏi và hình ảnh thuộc bản quyền của Cục Cảnh sát giao thông (Bộ Công An).
