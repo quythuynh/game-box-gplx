@@ -18,6 +18,7 @@ console.log(`📚 Đã nạp thành công ${questionsData.length} câu hỏi t�
 // Static files
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/data', express.static(path.join(__dirname, 'data')));
+app.get('/healthz', (req, res) => res.send('ok'));
 
 // Preset player colors
 const PLAYER_COLORS = [
@@ -426,6 +427,10 @@ io.on('connection', (socket) => {
         room.players[room.hostId].isHost = true;
       }
       io.to(currentRoomCode).emit('room-state', getPublicRoomState(room));
+      // Người rời đi là người cuối chưa nộp bài -> kết thúc trận
+      if (room.status === 'playing' && remainingPlayerIds.every(id => room.players[id].submitted)) {
+        finishGame(room);
+      }
     }
   });
 });

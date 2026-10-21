@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: game-box-gplx
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz

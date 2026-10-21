@@ -6,12 +6,16 @@
   <title>Đấu Trường Lý Thuyết GPLX B/B1 - 600 Câu Realtime (Vercel Ready)</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏎️</text></svg>">
   <link rel="stylesheet" href="./style.css">
-  <!-- Socket.io Realtime Client với CDN dự phòng khi deploy Vercel -->
-  <script src="/socket.io/socket.io.js"></script>
+  <!-- Địa chỉ server realtime (Node/Socket.io). Để trống nếu server.js phục vụ luôn trang này. -->
+  <script src="./config.js"></script>
   <script>
-    if (typeof io === 'undefined') {
-      document.write('<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"><\/script>');
-    }
+    (function () {
+      var base = (window.GAME_SERVER_URL || new URLSearchParams(location.search).get('server') || '').replace(/\/$/, '');
+      window.GAME_SERVER_URL = base;
+      var src = base ? base + '/socket.io/socket.io.js' : '/socket.io/socket.io.js';
+      document.write('<script src="' + src + '"><\/script>');
+      document.write('<script>if (typeof io === "undefined") document.write(\'<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"><\\/script>\');<\/script>');
+    })();
   </script>
 </head>
 <body>

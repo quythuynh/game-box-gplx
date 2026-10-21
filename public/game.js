@@ -51,8 +51,20 @@ function initApp() {
   loadProfileFromStorage();
 
   // Kết nối Socket.io
-  const socket = io();
+  const socket = io(window.GAME_SERVER_URL || undefined, {
+    transports: ['websocket', 'polling'],
+    reconnectionAttempts: 5,
+    timeout: 8000
+  });
   state.socket = socket;
+
+  socket.on('connect_error', () => {
+    const onVercel = /\.vercel\.app$/.test(location.hostname) && !window.GAME_SERVER_URL;
+    showLobbyError(onVercel
+      ? 'Vercel không chạy được Socket.io server. Hãy deploy server.js (Render/Railway...) và đặt GAME_SERVER_URL trong config.js.'
+      : 'Không kết nối được server realtime!');
+    resetLobbyButtons();
+  });
 
   socket.on('connect', () => {
     state.myId = socket.id;
@@ -177,6 +189,13 @@ function showScreen(screenEl) {
   screenEl.classList.add('active');
 }
 
+function resetLobbyButtons() {
+  const c = document.getElementById('btnCreateRoom');
+  const j = document.getElementById('btnJoinRoom');
+  if (c) { c.disabled = false; c.textContent = '🚀 Tạo Phòng & Bắt Đầu'; }
+  if (j) { j.disabled = false; j.textContent = '🔑 Vào Thi Đấu Ngay'; }
+}
+
 function showLobbyError(msg) {
   const el = document.getElementById('lobbyError');
   el.textContent = msg;
@@ -286,6 +305,11 @@ function setupLobbyEvents() {
     btn.disabled = true;
     btn.textContent = '⏳ Đang tạo phòng...';
 
+    if (!state.socket.connected) {
+      showLobbyError('Chưa kết nối được server realtime, thử lại sau giây lát...');
+      resetLobbyButtons();
+      return;
+    }
     state.socket.emit('create-room', { name, avatar, mode, timeLimit }, (res) => {
       btn.disabled = false;
       btn.textContent = '🚀 Tạo Phòng & Bắt Đầu';
@@ -315,6 +339,11 @@ function setupLobbyEvents() {
     btn.disabled = true;
     btn.textContent = '⏳ Đang kết nối...';
 
+    if (!state.socket.connected) {
+      showLobbyError('Chưa kết nối được server realtime, thử lại sau giây lát...');
+      resetLobbyButtons();
+      return;
+    }
     state.socket.emit('join-room', { roomCode, name, avatar }, (res) => {
       btn.disabled = false;
       btn.textContent = '🔑 Vào Thi Đấu Ngay';
