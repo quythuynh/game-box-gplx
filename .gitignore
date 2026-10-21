@@ -5,3 +5,4 @@ screenResult_test.png
 .agents/
 .vercel/
 .vercel
+supabase/.temp/
