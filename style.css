@@ -749,6 +749,138 @@ input[type="text"]:focus, select:focus {
 }
 
 /* =======================================================
+   BANNER THEO DÕI GÓC NHÌN NGƯỜI CHƠI (FOLLOW MODE / SPECTATOR)
+   ======================================================= */
+.follow-mode-banner {
+  background: linear-gradient(135deg, rgba(30, 27, 75, 0.95), rgba(15, 23, 42, 0.95));
+  border-bottom: 2px solid #6366f1;
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  z-index: 25;
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.25);
+  animation: slideDownBanner 0.25s ease-out;
+}
+
+@keyframes slideDownBanner {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fmb-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.fmb-live-dot {
+  width: 10px;
+  height: 10px;
+  background: #ef4444;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #ef4444;
+  animation: pulseLive 1.2s infinite;
+  flex-shrink: 0;
+}
+
+@keyframes pulseLive {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.fmb-avatar {
+  font-size: 1.5rem;
+}
+
+.fmb-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #e0e7ff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fmb-name {
+  color: #a5b4fc;
+}
+
+.fmb-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  background: rgba(99, 102, 241, 0.25);
+  color: #c7d2fe;
+  border: 1px solid rgba(99, 102, 241, 0.6);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.fmb-sub {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.btn-stop-follow {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-stop-follow:hover {
+  background: #dc2626;
+  color: white;
+  border-color: #dc2626;
+  transform: translateY(-1px);
+}
+
+.btn-follow-toggle {
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.btn-follow-toggle:hover {
+  background: #6366f1;
+  color: white;
+  border-color: #6366f1;
+}
+
+.btn-follow-toggle.active {
+  background: #6366f1;
+  color: white;
+  border-color: #818cf8;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.5);
+}
+
+.opponent-card.following {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 14px rgba(99, 102, 241, 0.45) !important;
+  background: rgba(99, 102, 241, 0.08) !important;
+}
+
+/* =======================================================
    BANNER KẾT QUẢ TRỰC TIẾP TRÊN PHẦN CÂU HỎI
    ======================================================= */
 .game-result-banner {
@@ -1893,4 +2025,31 @@ input[type="text"]:focus, select:focus {
 }
 [data-theme="light"] .history-name {
   color: #0f172a;
+}
+[data-theme="light"] .follow-mode-banner {
+  background: linear-gradient(135deg, #eef2ff, #f8fafc);
+  border-bottom-color: #6366f1;
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.1);
+}
+[data-theme="light"] .fmb-title {
+  color: #1e1b4b;
+}
+[data-theme="light"] .fmb-name {
+  color: #4338ca;
+}
+[data-theme="light"] .fmb-sub {
+  color: #475569;
+}
+[data-theme="light"] .btn-follow-toggle {
+  background: #eef2ff;
+  color: #4338ca;
+  border-color: #c7d2fe;
+}
+[data-theme="light"] .btn-follow-toggle:hover {
+  background: #4338ca;
+  color: white;
+}
+[data-theme="light"] .btn-follow-toggle.active {
+  background: #4338ca;
+  color: white;
 }

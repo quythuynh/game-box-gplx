@@ -29,6 +29,8 @@ const state = {
   startedAt: null,
   lastCursorSend: 0,
   isReviewMode: false,
+  hasSubmitted: false,
+  followingPlayerId: null,
   instantFeedback: false,
   reviewFilter: 'all',
   rankings: [],
@@ -135,6 +137,17 @@ function initApp() {
     if (state.players[data.playerId]) {
       state.players[data.playerId].currentQ = data.qIndex;
     }
+    // Nếu đang follow người chơi này thì tự động chuyển câu theo
+    if (state.followingPlayerId === data.playerId) {
+      renderQuestion(data.qIndex);
+      const target = state.players[data.playerId];
+      const sub = document.getElementById('fmbSub');
+      if (sub && target) {
+        sub.textContent = target.submitted
+          ? `Người chơi đã nộp bài · Đang xem lại câu ${data.qIndex + 1}`
+          : `Đang làm bài (${target.totalAnswered ?? 0}/30 câu) · Đang xem câu ${data.qIndex + 1}`;
+      }
+    }
     updateOpponentsBar();
   });
 
@@ -162,6 +175,9 @@ function initApp() {
 
   // Người chơi thoát phòng
   socket.on('player-left', ({ playerId, name }) => {
+    if (state.followingPlayerId === playerId) {
+      stopFollowing();
+    }
     delete state.players[playerId];
     removeRemoteCursor(playerId);
     renderWaitingList();
@@ -171,6 +187,8 @@ function initApp() {
   // Phòng restart ván mới
   socket.on('room-restarted', (room) => {
     state.isReviewMode = false;
+    state.hasSubmitted = false;
+    stopFollowing();
     state.rankings = [];
     state.myAnswers = {};
     const banner = document.getElementById('gameResultBanner');
@@ -439,6 +457,8 @@ function startExamUI() {
   state.currentQIndex = 0;
   state.myAnswers = {};
   state.isReviewMode = false;
+  state.hasSubmitted = false;
+  stopFollowing();
   state.rankings = [];
 
   const banner = document.getElementById('gameResultBanner');
@@ -682,13 +702,26 @@ function updateOpponentsBar() {
       statusText = `Đã làm: ${answeredCount}/30 câu · Đang xem: C${curQNum}`;
     }
 
+    const isFollowing = state.followingPlayerId === p.id;
+    const canFollow = (state.hasSubmitted || state.isReviewMode) && !isMe;
+
+    let followBtnHtml = '';
+    if (canFollow) {
+      if (isFollowing) {
+        followBtnHtml = `<button type="button" class="btn-follow-toggle active" data-pid="${p.id}" title="Bấm để dừng theo dõi">👁️ Đang theo dõi</button>`;
+      } else {
+        followBtnHtml = `<button type="button" class="btn-follow-toggle" data-pid="${p.id}" title="Bấm để theo dõi góc nhìn người này">👁️ Theo dõi</button>`;
+      }
+    }
+
     return `
-      <div class="opponent-card ${isMe ? 'me' : ''}">
+      <div class="opponent-card ${isMe ? 'me' : ''} ${isFollowing ? 'following' : ''}" data-pid="${p.id}" data-can-follow="${canFollow}" style="${canFollow ? 'cursor: pointer;' : ''}" title="${canFollow ? (isFollowing ? 'Bấm để dừng theo dõi' : 'Bấm để theo dõi góc nhìn của ' + p.name) : ''}">
         <span class="op-avatar">${p.avatar}</span>
         <div class="op-meta">
           <div class="op-name">
             <span class="op-color-dot" style="background: ${p.color};"></span>
             <span>${p.name}${isMe ? ' (Bạn)' : ''}</span>
+            ${followBtnHtml}
           </div>
           <div class="op-progress-txt">
             ${statusText}
@@ -700,7 +733,67 @@ function updateOpponentsBar() {
       </div>
     `;
   }).join('');
+
+  bar.querySelectorAll('.btn-follow-toggle').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const pid = btn.dataset.pid;
+      if (state.followingPlayerId === pid) {
+        stopFollowing();
+      } else {
+        startFollowing(pid);
+      }
+    });
+  });
+
+  bar.querySelectorAll('.opponent-card[data-can-follow="true"]').forEach(card => {
+    card.addEventListener('click', () => {
+      const pid = card.dataset.pid;
+      if (state.followingPlayerId === pid) {
+        stopFollowing();
+      } else {
+        startFollowing(pid);
+      }
+    });
+  });
 }
+
+// ================= SPECTATOR / FOLLOW MODE =================
+function startFollowing(pid) {
+  if (!state.hasSubmitted && !state.isReviewMode) return;
+  const target = state.players[pid];
+  if (!target) return;
+
+  state.followingPlayerId = pid;
+  const targetQ = target.currentQ ?? 0;
+
+  const banner = document.getElementById('followModeBanner');
+  if (banner) {
+    banner.style.display = 'flex';
+    const av = document.getElementById('fmbAvatar');
+    if (av) av.textContent = target.avatar || '🏎️';
+    const nm = document.getElementById('fmbName');
+    if (nm) nm.textContent = target.name;
+    const sub = document.getElementById('fmbSub');
+    if (sub) {
+      sub.textContent = target.submitted
+        ? `Người chơi đã nộp bài (Điểm: ${target.score ?? 0}/30) · Đang xem lại câu ${targetQ + 1}`
+        : `Đang làm bài (${target.totalAnswered ?? 0}/30 câu) · Đang xem câu ${targetQ + 1}`;
+    }
+  }
+
+  renderQuestion(targetQ);
+  updateOpponentsBar();
+}
+
+function stopFollowing() {
+  state.followingPlayerId = null;
+  const banner = document.getElementById('followModeBanner');
+  if (banner) banner.style.display = 'none';
+  updateOpponentsBar();
+}
+window.startFollowing = startFollowing;
+window.stopFollowing = stopFollowing;
 
 function updateOptionOpponentBadges() {
   const qIndex = state.currentQIndex;
@@ -743,6 +836,7 @@ function renderPaletteGrid() {
 
   grid.querySelectorAll('.q-pallet-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (state.followingPlayerId) stopFollowing();
       const idx = parseInt(btn.dataset.idx, 10);
       renderQuestion(idx);
     });
@@ -841,12 +935,14 @@ function setupGameEvents() {
   });
 
   document.getElementById('btnPrevQ').addEventListener('click', () => {
+    if (state.followingPlayerId) stopFollowing();
     if (state.currentQIndex > 0) {
       renderQuestion(state.currentQIndex - 1);
     }
   });
 
   document.getElementById('btnNextQ').addEventListener('click', () => {
+    if (state.followingPlayerId) stopFollowing();
     if (state.currentQIndex < 29) {
       renderQuestion(state.currentQIndex + 1);
     }
@@ -856,8 +952,10 @@ function setupGameEvents() {
     if (!screenGame.classList.contains('active')) return;
 
     if (e.key === 'ArrowLeft' && state.currentQIndex > 0) {
+      if (state.followingPlayerId) stopFollowing();
       renderQuestion(state.currentQIndex - 1);
     } else if (e.key === 'ArrowRight' && state.currentQIndex < 29) {
+      if (state.followingPlayerId) stopFollowing();
       renderQuestion(state.currentQIndex + 1);
     } else if (['1', '2', '3', '4'].includes(e.key)) {
       const optNum = parseInt(e.key, 10);
@@ -867,6 +965,11 @@ function setupGameEvents() {
       }
     }
   });
+
+  const btnStopFollow = document.getElementById('btnStopFollow');
+  if (btnStopFollow) {
+    btnStopFollow.addEventListener('click', () => stopFollowing());
+  }
 
   document.getElementById('btnSubmitExam').addEventListener('click', () => {
     const answeredCount = Object.keys(state.myAnswers).length;
@@ -1018,10 +1121,12 @@ function removeRemoteCursor(playerId) {
 
 function handleSubmitExam() {
   clearInterval(state.timerInterval);
+  state.hasSubmitted = true;
   document.getElementById('btnSubmitExam').disabled = true;
   document.getElementById('btnSubmitExam').textContent = 'Đã nộp bài ✅';
 
   state.socket.emit('submit-exam');
+  updateOpponentsBar();
 }
 
 // ================= LOCALSTORAGE: SAVE MATCH RESULT & WRONG QUESTIONS =================
@@ -1278,6 +1383,7 @@ function launchConfetti() {
 // ================= HIỂN THỊ KẾT QUẢ & XEM LẠI CÂU HỎI TRỰC TIẾP =================
 function showResultScreen(rankings, questions) {
   state.isReviewMode = true;
+  state.hasSubmitted = true;
   state.rankings = rankings;
   state.exam30 = questions;
 
