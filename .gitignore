@@ -4,3 +4,4 @@ node_modules/
 screenResult_test.png
 .agents/
 .vercel/
+.vercel
