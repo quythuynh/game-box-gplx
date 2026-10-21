@@ -29,6 +29,8 @@ const state = {
   startedAt: null,
   lastCursorSend: 0,
   isReviewMode: false,
+  isSolo: false,
+  flaggedQuestions: new Set(),
   hasSubmitted: false,
   followingPlayerId: null,
   instantFeedback: false,
@@ -333,6 +335,12 @@ function setupLobbyEvents() {
     themeToggleWaiting.addEventListener('click', () => ThemeEngine.toggle());
   }
 
+  // Nút Tự Luyện Solo
+  const btnSolo = document.getElementById('btnSoloPractice');
+  if (btnSolo) {
+    btnSolo.addEventListener('click', startSoloPractice);
+  }
+
   // Bấm Tạo Phòng
   document.getElementById('btnCreateRoom').addEventListener('click', () => {
     const { name, avatar } = getMyProfile();
@@ -452,12 +460,130 @@ function renderWaitingList() {
   }
 }
 
+// ================= SOLO PRACTICE & QUESTIONS LOADER =================
+let cachedQuestions600 = null;
+async function get600Questions() {
+  if (cachedQuestions600) return cachedQuestions600;
+  const res = await fetch('./data/questions_600_bca.json');
+  cachedQuestions600 = await res.json();
+  return cachedQuestions600;
+}
+
+function generate30ClientQuestions(allQuestions, mode = 'standard') {
+  function sample(arr, n) {
+    return [...arr].sort(() => 0.5 - Math.random()).slice(0, n);
+  }
+
+  if (mode === 'wrong') {
+    const wrongMap = JSON.parse(localStorage.getItem(STORAGE_KEYS.WRONG_QUESTIONS) || '{}');
+    const wrongIds = Object.keys(wrongMap).map(Number);
+    if (wrongIds.length === 0) {
+      return null;
+    }
+    const wrongList = allQuestions.filter(q => wrongIds.includes(q.id));
+    if (wrongList.length >= 30) {
+      return sample(wrongList, 30);
+    }
+    const pickedIds = new Set(wrongList.map(q => q.id));
+    const pad = sample(allQuestions.filter(q => !pickedIds.has(q.id)), 30 - wrongList.length);
+    return [...wrongList, ...pad].sort((a, b) => a.id - b.id);
+  }
+
+  if (mode === 'critical') {
+    return sample(allQuestions.filter(q => q.is_critical), 30);
+  }
+
+  if (mode === 'signs') {
+    return sample(allQuestions.filter(q => q.chapter === 5 || q.chapter === 6), 30);
+  }
+
+  const ch = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+  allQuestions.forEach(q => { if (ch[q.chapter]) ch[q.chapter].push(q); });
+  const pickedCritical = sample(allQuestions.filter(q => q.is_critical), 2);
+  const pickedIds = new Set(pickedCritical.map(q => q.id));
+  const plan = { 1: 9, 2: 1, 3: 3, 4: 2, 5: 9, 6: 6 };
+  const exam = [...pickedCritical];
+  for (let c = 1; c <= 6; c++) {
+    const have = exam.filter(q => q.chapter === c).length;
+    const chosen = sample(ch[c].filter(q => !pickedIds.has(q.id)), Math.max(0, plan[c] - have));
+    chosen.forEach(q => { pickedIds.add(q.id); exam.push(q); });
+  }
+  exam.sort((a, b) => a.id - b.id);
+  return exam.slice(0, 30);
+}
+
+async function startSoloPractice() {
+  const { name, avatar } = getMyProfile();
+  const mode = document.getElementById('gameModeSelect').value;
+  const timeLimit = parseInt(document.getElementById('gameTimeSelect').value, 10);
+  const instantFeedback = document.getElementById('chkInstantFeedback').checked;
+
+  const btn = document.getElementById('btnSoloPractice');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Đang nạp đề...';
+  }
+
+  try {
+    const allQuestions = await get600Questions();
+    const questions = generate30ClientQuestions(allQuestions, mode);
+
+    if (!questions) {
+      if (btn) { btn.disabled = false; btn.textContent = '⚡ Tự Luyện Solo'; }
+      showLobbyError('Bạn chưa có câu nào làm sai trong lịch sử! Hãy chọn chế độ Chuẩn thi thử trước nhé.');
+      return;
+    }
+
+    state.isSolo = true;
+    state.isHost = true;
+    state.myId = state.myId || ('solo_' + Math.random().toString(36).slice(2, 8));
+    state.roomCode = 'SOLO';
+    state.gameMode = mode;
+    state.timeLimit = timeLimit;
+    state.startedAt = Date.now();
+    state.instantFeedback = instantFeedback;
+    state.exam30 = questions;
+    state.players = {
+      [state.myId]: {
+        id: state.myId,
+        name: name,
+        avatar: avatar,
+        color: '#3b82f6',
+        isHost: true,
+        isReady: true,
+        currentQ: 0,
+        score: 0,
+        passed: false,
+        submitted: false
+      }
+    };
+    state.behavior = {
+      answerChangesCount: 0,
+      timePerQuestion: {},
+      questionStartTime: Date.now()
+    };
+
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '⚡ Tự Luyện Solo';
+    }
+
+    startExamUI();
+  } catch (err) {
+    console.error('Lỗi khởi tạo Solo:', err);
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Tự Luyện Solo'; }
+    showLobbyError('Không tải được danh sách câu hỏi: ' + err.message);
+  }
+}
+window.startSoloPractice = startSoloPractice;
+
 // ================= GAMEPLAY =================
 function startExamUI() {
   state.currentQIndex = 0;
   state.myAnswers = {};
   state.isReviewMode = false;
   state.hasSubmitted = false;
+  state.flaggedQuestions.clear();
   stopFollowing();
   state.rankings = [];
 
@@ -499,9 +625,10 @@ function updateTimerDisplay() {
   const txt = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   document.getElementById('timerText').textContent = txt;
 
-  if (state.timeRemaining <= 60) {
+  if (state.timeRemaining <= 60 && state.timeRemaining > 0) {
     document.getElementById('gameTimer').style.borderColor = 'var(--danger)';
     document.getElementById('timerText').style.color = '#f87171';
+    SoundEngine.playTick();
   }
 }
 
@@ -531,6 +658,15 @@ function renderQuestion(index) {
 
   const critBadge = document.getElementById('qBadgeCritical');
   critBadge.style.display = q.is_critical ? 'inline-block' : 'none';
+
+  // Trạng thái cắm cờ (Flag)
+  const isFlagged = state.flaggedQuestions.has(index);
+  const flagBtn = document.getElementById('btnFlagQuestion');
+  if (flagBtn) {
+    flagBtn.classList.toggle('active', isFlagged);
+    flagBtn.innerHTML = isFlagged ? '🚩 Đã cắm cờ' : '🏳️ Cắm cờ';
+    flagBtn.title = isFlagged ? 'Bấm để bỏ cờ (Phím F)' : 'Đánh dấu cờ câu phân vân (Phím F)';
+  }
 
   document.getElementById('qText').textContent = q.question;
 
@@ -666,14 +802,28 @@ function selectMyAnswer(qIndex, optionIndex) {
 
   state.myAnswers[qIndex] = optionIndex;
 
+  // Báo động đỏ khi phạm câu điểm liệt trong Chế độ Học tập
+  const q = state.exam30[qIndex];
+  if (state.instantFeedback && q && q.is_critical && optionIndex !== q.correct_option) {
+    SoundEngine.playCriticalAlert();
+    const pane = document.querySelector('.question-pane');
+    if (pane) {
+      pane.classList.remove('shake-screen');
+      void pane.offsetWidth;
+      pane.classList.add('shake-screen');
+    }
+  }
+
   renderQuestion(qIndex);
   updatePaletteGrid();
 
-  // Phát tín hiệu Realtime cho tất cả người chơi
-  state.socket.emit('select-answer', {
-    qIndex: qIndex,
-    optionIndex: optionIndex
-  });
+  // Phát tín hiệu Realtime cho tất cả người chơi (nếu không phải solo)
+  if (!state.isSolo && state.socket) {
+    state.socket.emit('select-answer', {
+      qIndex: qIndex,
+      optionIndex: optionIndex
+    });
+  }
 }
 
 function updateOpponentsBar() {
@@ -795,6 +945,19 @@ function stopFollowing() {
 window.startFollowing = startFollowing;
 window.stopFollowing = stopFollowing;
 
+function toggleFlag(index) {
+  if (state.isReviewMode) return;
+  if (state.flaggedQuestions.has(index)) {
+    state.flaggedQuestions.delete(index);
+  } else {
+    state.flaggedQuestions.add(index);
+    SoundEngine.playNav();
+  }
+  renderQuestion(index);
+  updatePaletteGrid();
+}
+window.toggleFlag = toggleFlag;
+
 function updateOptionOpponentBadges() {
   const qIndex = state.currentQIndex;
   const players = Object.values(state.players);
@@ -827,6 +990,7 @@ function renderPaletteGrid() {
     html += `
       <button type="button" class="q-pallet-btn" id="palletBtn-${i}" data-idx="${i}">
         <span>${i + 1}</span>
+        <span class="pallet-flag-icon" id="palletFlag-${i}" style="display: none;">🚩</span>
         <div class="pallet-dots-wrap" id="palletDots-${i}"></div>
       </button>
     `;
@@ -898,10 +1062,15 @@ function updatePaletteGrid() {
   for (let i = 0; i < 30; i++) {
     const btn = document.getElementById(`palletBtn-${i}`);
     const dotsWrap = document.getElementById(`palletDots-${i}`);
+    const flagEl = document.getElementById(`palletFlag-${i}`);
     if (!btn || !dotsWrap) continue;
 
     const myAnswered = state.myAnswers[i] !== undefined;
     btn.classList.toggle('my-answered', myAnswered);
+
+    const isFlagged = state.flaggedQuestions.has(i);
+    btn.classList.toggle('flagged', isFlagged);
+    if (flagEl) flagEl.style.display = isFlagged ? 'block' : 'none';
 
     // Chấm màu của những người chơi khác đã làm xong câu này
     dotsWrap.innerHTML = players
@@ -963,8 +1132,15 @@ function setupGameEvents() {
       if (currentQuestion && optNum <= currentQuestion.options.length) {
         selectMyAnswer(state.currentQIndex, optNum);
       }
+    } else if (e.key === 'f' || e.key === 'F') {
+      toggleFlag(state.currentQIndex);
     }
   });
+
+  const btnFlagQ = document.getElementById('btnFlagQuestion');
+  if (btnFlagQ) {
+    btnFlagQ.addEventListener('click', () => toggleFlag(state.currentQIndex));
+  }
 
   const btnStopFollow = document.getElementById('btnStopFollow');
   if (btnStopFollow) {
@@ -1006,6 +1182,10 @@ function setupGameEvents() {
   });
 
   document.getElementById('btnPlayAgain').addEventListener('click', () => {
+    if (state.isSolo) {
+      startSoloPractice();
+      return;
+    }
     if (state.isHost) {
       state.socket.emit('restart-game');
     } else {
@@ -1061,6 +1241,10 @@ function setupGameEvents() {
   const btnBannerPlayAgain = document.getElementById('btnBannerPlayAgain');
   if (btnBannerPlayAgain) {
     btnBannerPlayAgain.addEventListener('click', () => {
+      if (state.isSolo) {
+        startSoloPractice();
+        return;
+      }
       if (state.isHost) {
         state.socket.emit('restart-game');
       } else {
@@ -1073,6 +1257,10 @@ function setupGameEvents() {
   if (btnModalPlayAgain) {
     btnModalPlayAgain.addEventListener('click', () => {
       document.getElementById('podiumModal').classList.remove('active');
+      if (state.isSolo) {
+        startSoloPractice();
+        return;
+      }
       if (state.isHost) {
         state.socket.emit('restart-game');
       } else {
@@ -1124,6 +1312,40 @@ function handleSubmitExam() {
   state.hasSubmitted = true;
   document.getElementById('btnSubmitExam').disabled = true;
   document.getElementById('btnSubmitExam').textContent = 'Đã nộp bài ✅';
+
+  if (state.isSolo) {
+    const submitTime = Math.round((Date.now() - state.startedAt) / 1000);
+    let score = 0;
+    let failedCritical = false;
+
+    state.exam30.forEach((q, idx) => {
+      const chosen = state.myAnswers[idx];
+      if (chosen === q.correct_option) {
+        score++;
+      } else if (q.is_critical && chosen !== undefined) {
+        failedCritical = true;
+      }
+    });
+
+    const passed = (score >= 27) && !failedCritical;
+    const myProfile = getMyProfile();
+    const myRecord = {
+      id: state.myId,
+      name: myProfile.name,
+      avatar: myProfile.avatar,
+      color: '#3b82f6',
+      score: score,
+      passed: passed,
+      failedCritical: failedCritical,
+      submitTime: submitTime,
+      answers: state.myAnswers
+    };
+
+    const rankings = [myRecord];
+    saveMatchResultToStorage(rankings, state.exam30);
+    showResultScreen(rankings, state.exam30);
+    return;
+  }
 
   state.socket.emit('submit-exam');
   updateOpponentsBar();
@@ -1317,6 +1539,13 @@ const SoundEngine = {
   playSelect() { this.beep(587.33, 'triangle', 0.06); },
   playNav() { this.beep(392.00, 'sine', 0.04); },
   playReaction() { this.beep(783.99, 'sine', 0.08); },
+  playTick() { this.beep(880, 'sine', 0.03); },
+  playCriticalAlert() {
+    if (!this.enabled) return;
+    [220, 180, 220, 180].forEach((f, i) => {
+      setTimeout(() => this.beep(f, 'sawtooth', 0.15), i * 160);
+    });
+  },
   playVictory() {
     [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
       setTimeout(() => this.beep(f, 'triangle', 0.2), i * 140);

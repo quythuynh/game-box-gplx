@@ -72,6 +72,7 @@
           <label>Chế độ thi:</label>
           <select id="gameModeSelect">
             <option value="standard">🎯 Chuẩn thi sát hạch B/B1 (30 câu - Có câu điểm liệt)</option>
+            <option value="wrong">🔁 Luyện lại câu từng làm sai (Từ lịch sử của bạn)</option>
             <option value="critical">⚠️ Thử thách tử thần: 30 câu trong 60 câu điểm liệt</option>
             <option value="signs">🖼️ Sa hình & Biển báo: 30 câu từ Chương 5 & 6</option>
           </select>
@@ -90,7 +91,10 @@
             <span>💡 <b>Chế độ Học tập:</b> Hiện đáp án đúng & giải thích ngay khi bấm chọn câu</span>
           </label>
         </div>
-        <button type="button" class="btn-primary" id="btnCreateRoom">🚀 Tạo Phòng & Bắt Đầu</button>
+        <div style="display: flex; gap: 10px; margin-top: 6px;">
+          <button type="button" class="btn-solo-practice" id="btnSoloPractice" title="Tự luyện 1 mình, không cần bạn bè, vào thi tức thì">⚡ Tự Luyện Solo</button>
+          <button type="button" class="btn-primary" id="btnCreateRoom" style="flex: 1.2;">🚀 Tạo Phòng Đấu</button>
+        </div>
       </div>
 
       <!-- Tab Vào Phòng -->
@@ -202,7 +206,12 @@
           <span class="q-index-pill" id="qBadgeNum">Câu 1 / 30</span>
           <span class="q-chapter-pill" id="qBadgeChapter">Chương 1</span>
           <span class="q-critical-pill" id="qBadgeCritical" style="display: none;">⚠️ CÂU ĐIỂM LIỆT</span>
-          <span class="q-result-pill" id="qBadgeResult" style="display: none; margin-left: auto;"></span>
+          <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+            <button type="button" class="btn-flag-q" id="btnFlagQuestion" title="Đánh dấu cờ câu phân vân để kiểm tra lại trước khi nộp bài (Phím tắt: F)">
+              🏳️ Cắm cờ
+            </button>
+            <span class="q-result-pill" id="qBadgeResult" style="display: none;"></span>
+          </div>
         </div>
 
         <div class="q-text-content" id="qText">Đang tải câu hỏi...</div>

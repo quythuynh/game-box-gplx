@@ -216,6 +216,30 @@ input[type="text"]:focus, select:focus {
   filter: brightness(1.1);
 }
 
+.btn-solo-practice {
+  flex: 1;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  border: none;
+  border-radius: 10px;
+  color: white;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.btn-solo-practice:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.1);
+  box-shadow: 0 6px 18px rgba(245, 158, 11, 0.45);
+}
+
 /* =======================================================
    2. WAITING ROOM SCREEN
    ======================================================= */
@@ -549,6 +573,56 @@ input[type="text"]:focus, select:focus {
   font-weight: 700;
   padding: 4px 8px;
   border-radius: 6px;
+}
+
+.btn-flag-q {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s;
+  user-select: none;
+}
+.btn-flag-q:hover {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: #f59e0b;
+  color: #fbbf24;
+}
+.btn-flag-q.active {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: #f59e0b;
+  color: #fbbf24;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+}
+
+.pallet-flag-icon {
+  font-size: 0.65rem;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  line-height: 1;
+}
+
+.q-pallet-btn.flagged {
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.35) !important;
+}
+
+/* Rung màn hình khi phạm câu điểm liệt */
+@keyframes shakeEffect {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+.shake-screen {
+  animation: shakeEffect 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
 .q-text-content {
@@ -2052,4 +2126,19 @@ input[type="text"]:focus, select:focus {
 [data-theme="light"] .btn-follow-toggle.active {
   background: #4338ca;
   color: white;
+}
+[data-theme="light"] .btn-solo-practice {
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  color: white;
+}
+[data-theme="light"] .btn-flag-q {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+[data-theme="light"] .btn-flag-q:hover,
+[data-theme="light"] .btn-flag-q.active {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #b45309;
 }
