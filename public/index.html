@@ -10,6 +10,9 @@
   <script src="./config.js"></script>
   <script>
     (function () {
+      var savedTheme = localStorage.getItem('gplx_theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', savedTheme);
+
       var useSb = window.SUPABASE_URL && window.SUPABASE_ANON_KEY;
       if (useSb) {
         document.write('<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.4/dist/umd/supabase.js"><\/script>');
@@ -28,9 +31,14 @@
       <div class="logo-header">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
           <span class="logo-badge">🚗 BỘ CÔNG AN · HẠNG B / B1</span>
-          <button type="button" class="btn-history-trigger" id="btnOpenHistory" title="Xem lịch sử và thống kê lưu trên localStorage">
-            📊 Lịch Sử & Thống Kê
-          </button>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button type="button" class="btn-theme-toggle" id="btnThemeToggleLobby" title="Đổi màu nền Trắng / Đen">
+              ☀️ Sáng
+            </button>
+            <button type="button" class="btn-history-trigger" id="btnOpenHistory" title="Xem lịch sử và thống kê lưu trên localStorage">
+              📊 Lịch Sử & Thống Kê
+            </button>
+          </div>
         </div>
         <h1>ĐẤU TRƯỜNG LÝ THUYẾT</h1>
         <p>Thi đấu trắc nghiệm cùng bạn bè (2 - 4 người), xem tiến độ nhau theo thời gian thực</p>
@@ -101,7 +109,12 @@
   <!-- ================= 2. MÀN HÌNH CHỜ (WAITING ROOM) ================= -->
   <section class="screen" id="screenWaiting">
     <div class="waiting-box">
-      <span class="logo-badge">PHÒNG ĐẤU REALTIME</span>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span class="logo-badge">PHÒNG ĐẤU REALTIME</span>
+        <button type="button" class="btn-theme-toggle" id="btnThemeToggleWaiting" title="Đổi màu nền Trắng / Đen">
+          ☀️ Sáng
+        </button>
+      </div>
       <h2 style="font-size: 1.4rem; margin-top: 6px;">Mã phòng thi đấu</h2>
 
       <div class="room-code-badge" id="btnCopyCode" title="Bấm để sao chép liên kết">
@@ -138,6 +151,7 @@
         <span id="timerText">20:00</span>
       </div>
 
+      <button type="button" class="btn-theme-toggle" id="btnThemeToggleGame" title="Đổi màu nền Trắng / Đen">☀️</button>
       <button type="button" class="btn-sound-toggle" id="btnToggleSound" title="Bật/Tắt âm thanh (Sound FX)">🔊</button>
       <button type="button" class="btn-submit-exam" id="btnSubmitExam">Nộp Bài 📝</button>
     </header>

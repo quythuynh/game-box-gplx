@@ -39,6 +39,7 @@ const state = {
     questionStartTime: 0,
   }
 };
+window.state = state;
 
 // ================= DOM ELEMENTS =================
 const screenLobby = document.getElementById('screenLobby');
@@ -48,6 +49,7 @@ const screenResult = document.getElementById('screenResult');
 
 // ================= INITIALIZE =================
 function initApp() {
+  ThemeEngine.init();
   loadProfileFromStorage();
 
   // Kết nối Socket.io
@@ -287,6 +289,16 @@ function setupLobbyEvents() {
     tabJoinPane.classList.add('active');
     tabCreatePane.classList.remove('active');
   });
+
+  // Chuyển đổi giao diện Sáng / Tối (Theme Mode)
+  const themeToggleLobby = document.getElementById('btnThemeToggleLobby');
+  if (themeToggleLobby) {
+    themeToggleLobby.addEventListener('click', () => ThemeEngine.toggle());
+  }
+  const themeToggleWaiting = document.getElementById('btnThemeToggleWaiting');
+  if (themeToggleWaiting) {
+    themeToggleWaiting.addEventListener('click', () => ThemeEngine.toggle());
+  }
 
   // Bấm Tạo Phòng
   document.getElementById('btnCreateRoom').addEventListener('click', () => {
@@ -846,6 +858,12 @@ function setupGameEvents() {
     soundBtn.addEventListener('click', () => SoundEngine.toggle());
   }
 
+  // Đổi giao diện Sáng / Tối trong phòng đấu
+  const themeToggleGame = document.getElementById('btnThemeToggleGame');
+  if (themeToggleGame) {
+    themeToggleGame.addEventListener('click', () => ThemeEngine.toggle());
+  }
+
   // Thả cảm xúc Realtime
   document.querySelectorAll('.qr-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1106,6 +1124,30 @@ function renderHistoryModal() {
     }).join('');
   }
 }
+
+// ================= THEME ENGINE (LIGHT / DARK MODE) =================
+const ThemeEngine = {
+  theme: localStorage.getItem('gplx_theme') || 'dark',
+  init() {
+    this.apply(this.theme);
+  },
+  toggle() {
+    this.apply(this.theme === 'dark' ? 'light' : 'dark');
+  },
+  apply(t) {
+    this.theme = t;
+    localStorage.setItem('gplx_theme', t);
+    document.documentElement.setAttribute('data-theme', t);
+    const isLight = t === 'light';
+    const lBtn = document.getElementById('btnThemeToggleLobby');
+    if (lBtn) lBtn.innerHTML = isLight ? '🌙 Tối' : '☀️ Sáng';
+    const wBtn = document.getElementById('btnThemeToggleWaiting');
+    if (wBtn) wBtn.innerHTML = isLight ? '🌙 Tối' : '☀️ Sáng';
+    const gBtn = document.getElementById('btnThemeToggleGame');
+    if (gBtn) gBtn.innerHTML = isLight ? '🌙' : '☀️';
+  }
+};
+window.ThemeEngine = ThemeEngine;
 
 // ================= SOUND & REACTION ENGINES =================
 const SoundEngine = {
