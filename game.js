@@ -375,12 +375,6 @@ function setupLobbyEvents() {
     });
   });
 
-  // Nút mở tab mới test ngay lập tức
-  document.getElementById('btnOpenTestTab').addEventListener('click', () => {
-    const testUrl = `${window.location.origin}${window.location.pathname}?room=${state.roomCode}&auto=true`;
-    window.open(testUrl, '_blank');
-  });
-
   // Rời phòng
   document.getElementById('btnLeaveRoom').addEventListener('click', () => {
     window.location.reload();
