@@ -48,19 +48,19 @@ npm start
 3. Tại phòng chờ, bấm nút **`🧪 Mở Tab 2 Test Ngay`** để tự động mở thêm người chơi vào chung phòng.
 4. Bấm **"🏁 Bắt Đầu Thi Đấu"** để bắt đầu tranh tài Realtime!
 
-### 3. Kiểm thử tự động với 3 trình duyệt Chrome đồng thời
+### 3. Thử nhiều người chơi
 ```bash
-node test_socket_full.js
+npm start  # rồi mở 2 tab để thử
 ```
 
 ---
 
-## 🌐 Triển khai lên Vercel
-Dự án đã có sẵn file `vercel.json`, có thể deploy trực tiếp bằng Vercel CLI hoặc kết nối GitHub repo với Vercel:
-```bash
-npm install -g vercel
-vercel
-```
+## 🌐 Triển khai lên Vercel (chạy hoàn toàn trên Vercel)
+Realtime chạy qua HTTP polling (`/api/emit`, `/api/poll`) và lưu phòng trong **Upstash Redis**:
+1. Vercel Dashboard → project → **Storage / Marketplace → Upstash Redis** → Create & Connect (tự thêm biến môi trường `KV_REST_API_URL`, `KV_REST_API_TOKEN` hoặc `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`).
+2. Redeploy. Không cần server riêng.
+
+Chạy local (`npm start`) dùng bộ nhớ tạm, không cần Redis.
 
 ## 📜 Giấy phép
 Mã nguồn mở theo giấy phép MIT. Bộ câu hỏi và hình ảnh thuộc bản quyền của Cục Cảnh sát giao thông (Bộ Công An).

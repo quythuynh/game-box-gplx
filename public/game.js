@@ -51,24 +51,17 @@ function initApp() {
   loadProfileFromStorage();
 
   // Kết nối Socket.io
-  const socket = io(window.GAME_SERVER_URL || undefined, {
-    transports: ['websocket', 'polling'],
-    reconnectionAttempts: 5,
-    timeout: 8000
-  });
+  const socket = io();
   state.socket = socket;
 
   socket.on('connect_error', () => {
-    const onVercel = /\.vercel\.app$/.test(location.hostname) && !window.GAME_SERVER_URL;
-    showLobbyError(onVercel
-      ? 'Vercel không chạy được Socket.io server. Hãy deploy server.js (Render/Railway...) và đặt GAME_SERVER_URL trong config.js.'
-      : 'Không kết nối được server realtime!');
+    showLobbyError('Không kết nối được server!');
     resetLobbyButtons();
   });
 
   socket.on('connect', () => {
     state.myId = socket.id;
-    console.log('⚡ Đã kết nối Socket.io Realtime. ID:', socket.id);
+    console.log('⚡ Realtime sẵn sàng. ID:', socket.id);
   });
 
   socket.on('disconnect', () => {
