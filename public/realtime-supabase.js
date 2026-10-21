@@ -38,6 +38,8 @@
     let refreshAgain = false;
     let timer = null;
     let answered = {};      // câu đã trả lời của mình (để gửi tiến độ)
+    const playerCurrentQMap = {};
+    const playerAnsweredListMap = {};
 
     async function rpc(fn, args) {
       const { data, error } = await sb.rpc(fn, args);
@@ -48,7 +50,11 @@
     function playerObj(p) {
       return {
         id: p.id, name: p.name, avatar: p.avatar, color: p.color, isHost: p.is_host,
-        isReady: p.is_ready, currentQ: 0, answers: {}, submitted: p.submitted,
+        isReady: p.is_ready,
+        currentQ: playerCurrentQMap[p.id] ?? 0,
+        answers: {},
+        answeredList: playerAnsweredListMap[p.id] ?? [],
+        submitted: p.submitted,
         submitTime: p.submit_time, score: p.score, passed: p.passed,
         failedCritical: p.failed_critical, totalAnswered: p.answered
       };
@@ -132,8 +138,19 @@
       channel = sb.channel('room:' + room, { config: { broadcast: { self: false }, presence: { key: sock.id } } });
       const bc = (event, ev) => channel.on('broadcast', { event }, ({ payload }) => sock._fire(ev, payload));
       bc('cursor', 'player-cursor');
-      bc('progress', 'player-progress-updated');
-      bc('navigate', 'player-navigated');
+      channel.on('broadcast', { event: 'progress' }, ({ payload }) => {
+        if (payload && payload.playerId) {
+          if (payload.qIndex !== undefined) playerCurrentQMap[payload.playerId] = payload.qIndex;
+          if (payload.answeredList) playerAnsweredListMap[payload.playerId] = payload.answeredList;
+        }
+        sock._fire('player-progress-updated', payload);
+      });
+      channel.on('broadcast', { event: 'navigate' }, ({ payload }) => {
+        if (payload && payload.playerId) {
+          playerCurrentQMap[payload.playerId] = payload.qIndex;
+        }
+        sock._fire('player-navigated', payload);
+      });
       bc('reaction', 'player-reaction');
       channel.on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: 'code=eq.' + room }, refresh);
       channel.on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: 'room_code=eq.' + room }, refresh);
@@ -157,6 +174,8 @@
       timer = null;
       if (channel) { sb.removeChannel(channel); channel = null; }
       room = null; prev = null;
+      for (const k in playerCurrentQMap) delete playerCurrentQMap[k];
+      for (const k in playerAnsweredListMap) delete playerAnsweredListMap[k];
     }
 
     function joined(res) {
@@ -192,6 +211,8 @@
           break;
         case 'select-answer':
           answered[data.qIndex] = data.optionIndex;
+          playerCurrentQMap[sock.id] = data.qIndex;
+          playerAnsweredListMap[sock.id] = Object.keys(answered).map(Number);
           rpc('gp_select_answer', { p_pid: sock.id, p_code: room, p_q: data.qIndex, p_opt: data.optionIndex }).catch(fail);
           sendBc('progress', Object.assign(who(), {
             qIndex: data.qIndex, totalAnswered: Object.keys(answered).length,
@@ -199,6 +220,7 @@
           }));
           break;
         case 'navigate-question':
+          playerCurrentQMap[sock.id] = data.qIndex;
           sendBc('navigate', { playerId: sock.id, qIndex: data.qIndex });
           break;
         case 'cursor-move':

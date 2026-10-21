@@ -73,6 +73,17 @@ function initApp() {
   // Lắng nghe cập nhật phòng
   socket.on('room-state', (room) => {
     state.roomCode = room.code;
+    if (state.players) {
+      Object.keys(room.players).forEach(pid => {
+        if (state.players[pid]) {
+          room.players[pid].currentQ = state.players[pid].currentQ ?? room.players[pid].currentQ;
+          room.players[pid].answeredList = state.players[pid].answeredList ?? room.players[pid].answeredList;
+          if (state.players[pid].totalAnswered !== undefined && (room.players[pid].totalAnswered === 0 || room.players[pid].totalAnswered === undefined)) {
+            room.players[pid].totalAnswered = state.players[pid].totalAnswered;
+          }
+        }
+      });
+    }
     state.players = room.players;
     state.gameMode = room.mode;
     state.timeLimit = room.timeLimit;
@@ -83,6 +94,10 @@ function initApp() {
 
     if (room.status === 'lobby' && !screenGame.classList.contains('active')) {
       showScreen(screenWaiting);
+    }
+    if (screenGame.classList.contains('active')) {
+      updateOpponentsBar();
+      updatePaletteGrid();
     }
   });
 
@@ -485,6 +500,10 @@ function renderQuestion(index) {
   }
   state.behavior.questionStartTime = now;
   state.currentQIndex = index;
+  if (state.players && state.players[state.myId]) {
+    state.players[state.myId].currentQ = index;
+  }
+  updateOpponentsBar();
 
   const q = state.exam30[index];
   document.getElementById('qBadgeNum').textContent = `Câu ${index + 1} / 30`;
@@ -639,6 +658,7 @@ function selectMyAnswer(qIndex, optionIndex) {
 
 function updateOpponentsBar() {
   const bar = document.getElementById('liveOpponentsBar');
+  if (!bar) return;
   const players = Object.values(state.players);
 
   bar.innerHTML = players.map(p => {
@@ -647,6 +667,20 @@ function updateOpponentsBar() {
       ? Object.keys(state.myAnswers).length 
       : (p.totalAnswered ?? p.answeredList?.length ?? Object.keys(p.answers || {}).length);
     const pct = Math.round((answeredCount / 30) * 100);
+    const curQIndex = isMe ? state.currentQIndex : (p.currentQ ?? 0);
+    const curQNum = (curQIndex ?? 0) + 1;
+
+    let statusText = '';
+    if (state.isReviewMode || p.submitted) {
+      if (p.score !== undefined && p.score !== null) {
+        const badge = p.passed ? '🎉 Đạt' : (p.failedCritical ? '⚠️ Liệt' : '❌ Rớt');
+        statusText = `Điểm: ${p.score}/30 (${badge}) · Đang xem: C${curQNum}`;
+      } else {
+        statusText = `Đã nộp bài · Đang xem: C${curQNum}`;
+      }
+    } else {
+      statusText = `Đã làm: ${answeredCount}/30 câu · Đang xem: C${curQNum}`;
+    }
 
     return `
       <div class="opponent-card ${isMe ? 'me' : ''}">
@@ -654,10 +688,10 @@ function updateOpponentsBar() {
         <div class="op-meta">
           <div class="op-name">
             <span class="op-color-dot" style="background: ${p.color};"></span>
-            <span>${p.name}</span>
+            <span>${p.name}${isMe ? ' (Bạn)' : ''}</span>
           </div>
           <div class="op-progress-txt">
-            ${answeredCount}/30 câu · Đang xem: C${(p.currentQ ?? 0) + 1}
+            ${statusText}
           </div>
           <div class="op-progress-bar">
             <div class="op-progress-fill" style="width: ${pct}%; background: ${p.color};"></div>
@@ -1246,6 +1280,16 @@ function showResultScreen(rankings, questions) {
   state.isReviewMode = true;
   state.rankings = rankings;
   state.exam30 = questions;
+
+  rankings.forEach(r => {
+    if (state.players[r.id]) {
+      state.players[r.id].score = r.score;
+      state.players[r.id].passed = r.passed;
+      state.players[r.id].failedCritical = r.failedCritical;
+      state.players[r.id].submitted = true;
+      if (r.answers) state.players[r.id].answers = r.answers;
+    }
+  });
 
   const myRecord = rankings.find(p => p.id === state.myId) || {};
   const isPassed = !!myRecord.passed;
