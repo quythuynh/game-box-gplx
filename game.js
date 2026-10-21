@@ -222,7 +222,7 @@ function saveProfileToStorage(name, avatar) {
 
 function getMyProfile() {
   const nameInput = document.getElementById('playerNameInput');
-  const name = nameInput.value.trim() || 'Tay Lái Cừ Khôi';
+  const name = nameInput.value.trim() || `Tay Lái ${Math.floor(100 + Math.random() * 900)}`;
   const avatar = document.querySelector('.avatar-opt.selected')?.dataset.avatar || '🏎️';
   saveProfileToStorage(name, avatar);
   return { name, avatar };

@@ -1546,3 +1546,90 @@ input[type="text"]:focus, select:focus {
     transform: translate(-50%, -150px) scale(0.9) rotate(0deg);
   }
 }
+
+/* =======================================================
+   RESPONSIVE: màn hình thi đấu trên tablet / điện thoại
+   ======================================================= */
+@media (max-width: 900px) {
+  .game-header {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+  }
+  .timer-box { order: 1; padding: 5px 10px; font-size: 1rem; }
+  .btn-sound-toggle { order: 2; }
+  .btn-submit-exam { order: 3; margin-left: auto; padding: 8px 14px; }
+  .opponents-bar {
+    order: 4;
+    flex: 1 0 100%;
+    max-width: none;
+    gap: 8px;
+    padding-bottom: 2px;
+  }
+  .opponent-card { min-width: 140px; padding: 5px 8px; }
+
+  .arena-container {
+    flex-direction: column;
+    overflow: visible;
+  }
+  .question-pane {
+    width: 100%;
+    max-width: none;
+    padding: 16px 14px 12px;
+    overflow: visible;
+  }
+  .q-text-content { font-size: 1.05rem; line-height: 1.5; }
+  .option-card { padding: 14px 12px; }
+
+  /* Danh sách câu: dải cuộn ngang ngay dưới thanh trên */
+  .palette-pane {
+    order: -1;
+    width: 100%;
+    border-left: none;
+    border-bottom: 1px solid var(--border-color);
+    padding: 8px 12px;
+  }
+  .palette-title { display: none; }
+  .palette-grid {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-height: none;
+    padding: 2px 0 6px;
+    scroll-snap-type: x proximity;
+  }
+  .q-pallet-btn {
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
+    aspect-ratio: auto;
+    scroll-snap-align: center;
+  }
+
+  /* Điều hướng cố định ở đáy để bấm bằng ngón cái */
+  .nav-controls {
+    position: sticky;
+    bottom: 0;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 0;
+    background: var(--bg-dark);
+    z-index: 5;
+  }
+  .nav-controls .btn-nav { flex: 1; min-width: 0; padding: 12px 10px; }
+  .quick-reactions-bar { order: 3; flex: 1 0 100%; justify-content: center; }
+  .qr-label { display: none; }
+}
+
+@media (max-width: 480px) {
+  #screenLobby { padding: 12px; align-items: flex-start; }
+  .lobby-container { padding: 20px 16px; border-radius: 14px; }
+  .avatar-selector { gap: 6px; }
+  .avatar-opt { padding: 8px 0; flex: 1; font-size: 1.35rem; }
+  .logo-header > div { flex-wrap: wrap; gap: 8px; }
+  .q-badge-bar { flex-wrap: wrap; }
+}
