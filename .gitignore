@@ -6,3 +6,5 @@ screenResult_test.png
 .vercel/
 .vercel
 supabase/.temp/
+.env
+.env.*
