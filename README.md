@@ -1,10 +1,10 @@
 # game-box-gplx
-# 🏎️ Đấu Trường Trắc Nghiệm GPLX B/B1 Realtime (2 - 4 Người Chơi)
+# 🏎️ Đấu Trường Trắc Nghiệm GPLX B/B1 Realtime (2 - 6 Người Chơi)
 ### Chuẩn 600 Câu Hỏi Sát Hạch Bộ Công An (CV 2262/CSGT-P5 & Thông tư 12/2025/TT-BCA)
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fquythuynh%2Fgame-box-gplx)
 
-Ứng dụng web đối kháng trắc nghiệm lý thuyết lái xe ô tô hạng B/B1 dành cho **2 đến 4 người cùng thi đấu thời gian thực (Realtime)**:
+Ứng dụng web đối kháng trắc nghiệm lý thuyết lái xe ô tô hạng B/B1 dành cho **2 đến 6 người cùng thi đấu thời gian thực (Realtime)**:
 * 🎯 **Sinh đề tự động:** 30 câu hỏi ngẫu nhiên chuẩn cấu trúc đề thi (đủ 6 chương + đảm bảo có câu điểm liệt).
 * 🖱️ **Chuột Realtime đa chiều:** Nhìn thấy con trỏ chuột của đối thủ di chuyển trên màn hình theo thời gian thực (hiển thị màu sắc và avatar riêng).
 * 🛡️ **Cơ chế chống nhìn bài:** Trong lúc làm bài, đối thủ chỉ biết bạn đang ở câu nào và đã hoàn thành bao nhiêu câu. Đáp án được bảo mật 100% đến khi nộp bài.
@@ -19,6 +19,24 @@
   - Bộ giả lập âm thanh Web Audio API (không phụ thuộc file ngoài): Âm thanh chọn câu, chuyển câu, nhạc hiệu chiến thắng bục Podium.
   - Thả cảm xúc Realtime: `🔥`, `🏎️`, `😂`, `😱`, `👏`, `💀`.
   - Pháo hoa Confetti chúc mừng người vượt qua bài thi.
+* 🎮 **Trải nghiệm nhiều người chơi (`public/live.js`):**
+  - **Phòng chờ:** nút Sẵn sàng, đếm số người sẵn sàng, chat, đếm ngược 3-2-1 đồng loạt trước khi vào trận.
+  - **Đường đua xếp hạng sống:** mỗi người một làn, xe chạy theo tiến độ, huy chương 🥇🥈🥉, thông báo vượt hạng / dẫn đầu.
+  - **Thông báo sự kiện:** người vào/rời phòng, nộp bài, làm xong 30 câu, còn 5 phút / 1 phút / 10 giây, mất/có lại kết nối.
+  - **Chat nhanh** trong trận; con trỏ đối thủ trượt mượt.
+  - **⚡ Đua tốc độ đồng bộ:** cả phòng cùng 1 câu (15 câu, 15s/câu), khóa đáp án, điểm theo tốc độ + chuỗi đúng, bảng xếp hạng điểm.
+  - **💀 Sinh tồn:** cùng 1 câu (20 câu, 12s/câu), sai hoặc hết giờ là bị loại, người cuối cùng còn sống thắng (ván kết thúc sớm khi chỉ còn 1 người).
+  - **🤝 Đồng đội:** chia 2 đội 🔵/🔴 tự động, điểm cả đội cộng dồn, thanh điểm đội hiển thị trực tiếp.
+  - **Chọc đối thủ** (bấm vào làn đua), **chấm trạng thái kết nối** 🟢🟡🔴 của từng người, **đề nghị đấu lại** (host thấy số người đồng ý).
+  - **Phòng tối đa 6 người.** Với Supabase cần chạy `supabase/migrate_6_players.sql` một lần.
+  - **Khán giả:** nhập mã phòng đang thi đấu để vào xem (theo dõi góc nhìn từng người, đường đua, kết quả), không cần sửa DB.
+  - Giới hạn tốc độ tin `fx` phía server (Redis); phía nhận cũng bỏ qua tin dồn dập.
+* 📚 **Ôn tập (`public/study.js`):** ôn theo chương kèm thống kê độ chính xác, gợi ý chương yếu nhất, tra cứu 600 câu không cần dấu,
+  lặp lại ngắt quãng cho câu sai (1 - 3 - 7 ngày, đúng 3 lần là "thuộc"), chuỗi ngày luyện, mục tiêu 30 câu/ngày, XP/cấp, huy hiệu.
+* 📱 **PWA:** cài lên màn hình điện thoại, mở và luyện solo được khi mất mạng (`manifest.webmanifest`, `sw.js`);
+  vuốt ngang để chuyển câu. Service worker chỉ tự đăng ký trên bản triển khai (local bật bằng `localStorage.gplx_sw = '1'`).
+  - **Tự vào lại phòng** khi tải lại trang (khôi phục bài đã làm, câu đang xem, cờ, thời gian còn lại). Dữ liệu phiên lưu ở localStorage.
+  - Các tính năng trên chạy qua kênh relay `fx` phía client nên dùng được cho cả Supabase lẫn Redis/polling.
 * 💾 **Lưu trữ hành vi trên `localStorage`:**
   - Tự động ghi nhớ Profile & Avatar.
   - Lưu lịch sử các trận đấu (Điểm số, Đạt/Rớt, Thời gian làm bài, Số lần đổi ý).

@@ -131,7 +131,7 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   rm rooms; cnt int; pl players; code text := upper(trim(coalesce(p_code,'')));
   colors text[] := array['#3b82f6','#ef4444','#10b981','#f59e0b','#8b5cf6','#ec4899'];
-  avatars text[] := array['🚗','🚙','🚕','🏎️'];
+  avatars text[] := array['🚗','🚙','🚕','🏎️','🚓','🚌'];
 begin
   select * into rm from rooms where rooms.code = code;
   if not found then return jsonb_build_object('success', false, 'message', 'Phòng không tồn tại!'); end if;
@@ -140,13 +140,13 @@ begin
     return jsonb_build_object('success', true, 'roomCode', code, 'player', gp_player_json(pl));
   end if;
   select count(*) into cnt from players where room_code = code;
-  if cnt >= 4 then return jsonb_build_object('success', false, 'message', 'Phòng đã đầy (tối đa 4 người)!'); end if;
+  if cnt >= 6 then return jsonb_build_object('success', false, 'message', 'Phòng đã đầy (tối đa 6 người)!'); end if;
   if rm.status = 'playing' then return jsonb_build_object('success', false, 'message', 'Trận đấu đang diễn ra, không thể tham gia!'); end if;
 
   insert into players(room_code, id, name, avatar, color, is_host)
   values (code, p_pid,
     left(coalesce(nullif(trim(p_name),''), 'Người chơi ' || (cnt+1)),20),
-    coalesce(nullif(p_avatar,''), avatars[1 + (cnt % 4)]),
+    coalesce(nullif(p_avatar,''), avatars[1 + (cnt % 6)]),
     colors[1 + (cnt % 6)], false)
   returning * into pl;
   insert into player_answers(room_code, player_id) values (code, p_pid);

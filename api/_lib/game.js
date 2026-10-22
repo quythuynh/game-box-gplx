@@ -2,8 +2,10 @@ const store = require('./store');
 const questionsData = require('../../data/questions_600_bca.json');
 
 const TTL = 60 * 60 * 6;
-const STALE_MS = 20000;
+const STALE_MS = 30000;
 const MAX_EVENTS = 300;
+const MAX_PLAYERS = 6;
+const FX_PER_SEC = 6;
 const PLAYER_COLORS = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 const byId = new Map(questionsData.map(q => [q.id, q]));
 
@@ -89,6 +91,12 @@ function newPlayer(id, name, avatar, color, isHost, fallbackName) {
   };
 }
 
+const clientQuestions = list => list.map(q => ({
+  id: q.id, chapter: q.chapter, chapter_name: q.chapter_name, question: q.question,
+  image: q.image, options: q.options, is_critical: q.is_critical,
+  correct_option: q.correct_option, explanation: q.explanation
+}));
+
 const roomQuestions = room => (room.questionIds || []).map(id => byId.get(id));
 
 async function finishGame(room) {
@@ -132,16 +140,35 @@ const handlers = {
     const players = await getPlayers(code);
     if (!players[pid]) {
       const count = Object.keys(players).length;
-      if (count >= 4) return { success: false, message: 'Phòng đã đầy (tối đa 4 người)!' };
+      if (count >= MAX_PLAYERS) return { success: false, message: `Phòng đã đầy (tối đa ${MAX_PLAYERS} người)!` };
       if (room.status === 'playing') return { success: false, message: 'Trận đấu đang diễn ra, không thể tham gia!' };
-      players[pid] = newPlayer(pid, name, avatar || ['🚗', '🚙', '🚕', '🏎️'][count % 4],
+      players[pid] = newPlayer(pid, name, avatar || ['🚗', '🚙', '🚕', '🏎️', '🚓', '🚌'][count % 6],
         PLAYER_COLORS[count % PLAYER_COLORS.length], false, `Người chơi ${count + 1}`);
       await savePlayer(code, players[pid]);
     }
     const seq = Number(await store.get(k.seq(code))) || 0;
     await store.hset(k.seen(code), { [pid]: String(Date.now()) });
     await emit(code, 'room-state', await publicState(room));
-    return { success: true, roomCode: code, player: players[pid], seq };
+    const result = { success: true, roomCode: code, player: players[pid], seq };
+    if (room.status === 'playing') {
+      // Người chơi vào lại giữa trận: gửi kèm đề và trạng thái để khôi phục
+      result.resume = { room: await publicState(room), questions: clientQuestions(roomQuestions(room)) };
+    }
+    return result;
+  },
+
+  // Khán giả: vào xem phòng (kể cả khi đang thi đấu) mà không thành người chơi
+  async 'spectate-room'({ roomCode }, pid) {
+    const code = (roomCode || '').trim().toUpperCase();
+    const room = code && await getRoom(code);
+    if (!room) return { success: false, message: 'Phòng không tồn tại!' };
+    const seq = Number(await store.get(k.seq(code))) || 0;
+    await store.hset(k.seen(code), { [pid]: String(Date.now()) });
+    const result = { success: true, spectator: true, roomCode: code, seq, room: await publicState(room) };
+    if (room.status === 'playing') {
+      result.resume = { room: result.room, questions: clientQuestions(roomQuestions(room)) };
+    }
+    return result;
   },
 
   async 'toggle-ready'({ isReady }, pid, code) {
@@ -176,20 +203,25 @@ const handlers = {
     }));
     await emit(code, 'game-started', {
       room: await publicState(room),
-      questions: questions.map(q => ({
-        id: q.id, chapter: q.chapter, chapter_name: q.chapter_name, question: q.question,
-        image: q.image, options: q.options, is_critical: q.is_critical,
-        correct_option: q.correct_option, explanation: q.explanation
-      }))
+      questions: clientQuestions(questions)
     });
   },
 
+  // Client đã biết tên/avatar/màu từ room-state nên không cần tra cứu người chơi (đỡ 1 lần đọc Redis mỗi lần di chuột)
   async 'cursor-move'({ xPercent, yPercent, qIndex }, pid, code) {
-    const p = await getPlayer(code, pid);
-    if (!p) return;
-    await emit(code, 'player-cursor', {
-      playerId: pid, name: p.name, avatar: p.avatar, color: p.color, x: xPercent, y: yPercent, qIndex
-    }, pid);
+    await emit(code, 'player-cursor', { playerId: pid, x: xPercent, y: yPercent, qIndex }, pid);
+  },
+
+  // Kênh relay cho tính năng phía client (sẵn sàng, chat, đếm ngược, điểm...). Không lưu trạng thái.
+  async 'fx'(data, pid, code) {
+    const t = typeof data.t === 'string' ? data.t.slice(0, 16) : '';
+    if (!t || JSON.stringify(data).length > 600) return;
+    // Giới hạn tốc độ: tối đa FX_PER_SEC tin/giây/người để chống spam chat, chọc...
+    const bucket = `room:${code}:rl:${pid}:${Math.floor(Date.now() / 1000)}`;
+    const n = await store.incr(bucket);
+    if (n === 1) await store.expire(bucket, 5);
+    if (n > FX_PER_SEC) return;
+    await emit(code, 'fx', Object.assign({}, data, { t, from: pid }), pid);
   },
 
   async 'select-answer'({ qIndex, optionIndex }, pid, code) {
@@ -293,7 +325,7 @@ async function removePlayer(code, pid) {
 async function handle(event, data, pid, code) {
   const fn = handlers[event];
   if (!fn) return { success: false, message: 'Sự kiện không hợp lệ' };
-  const needsRoom = !['create-room', 'join-room'].includes(event);
+  const needsRoom = !['create-room', 'join-room', 'spectate-room'].includes(event);
   if (needsRoom) {
     if (!code || !(await getRoom(code))) return { success: false, message: 'Phòng không tồn tại' };
   }

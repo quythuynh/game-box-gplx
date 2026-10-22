@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Đấu Trường Lý Thuyết GPLX B/B1 - 600 Câu Realtime (Vercel Ready)</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <meta name="theme-color" content="#0b0f19">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏎️</text></svg>">
   <link rel="stylesheet" href="./style.css">
   <!-- Chọn backend realtime: Supabase nếu có khoá trong config.js, ngược lại HTTP polling (/api) -->
@@ -35,13 +38,18 @@
             <button type="button" class="btn-theme-toggle" id="btnThemeToggleLobby" title="Đổi màu nền Trắng / Đen">
               ☀️ Sáng
             </button>
+            <button type="button" class="btn-history-trigger" id="btnOpenStudy" title="Ôn theo chương, tra cứu câu hỏi, huy hiệu">
+              📚 Ôn Tập
+            </button>
             <button type="button" class="btn-history-trigger" id="btnOpenHistory" title="Xem lịch sử và thống kê lưu trên localStorage">
               📊 Lịch Sử & Thống Kê
             </button>
           </div>
         </div>
         <h1>ĐẤU TRƯỜNG LÝ THUYẾT</h1>
-        <p>Thi đấu trắc nghiệm cùng bạn bè (2 - 4 người), xem tiến độ nhau theo thời gian thực</p>
+        <p>Thi đấu trắc nghiệm cùng bạn bè (2 - 6 người), xem tiến độ nhau theo thời gian thực</p>
+        <div class="progress-chip" id="progressChip"></div>
+        <div class="progress-goal"><div class="progress-goal-fill" id="progressGoalBar"></div></div>
       </div>
 
       <div class="form-group">
@@ -75,6 +83,9 @@
             <option value="wrong">🔁 Luyện lại câu từng làm sai (Từ lịch sử của bạn)</option>
             <option value="critical">⚠️ Thử thách tử thần: 30 câu trong 60 câu điểm liệt</option>
             <option value="signs">🖼️ Sa hình & Biển báo: 30 câu từ Chương 5 & 6</option>
+            <option value="live">⚡ Đua tốc độ đồng bộ: cả phòng cùng 1 câu, 15s/câu (cần phòng nhiều người)</option>
+            <option value="survival">💀 Sinh tồn: sai 1 câu là bị loại, người cuối cùng thắng (cần phòng nhiều người)</option>
+            <option value="team">🤝 Đồng đội: 2 đội đua điểm, cộng dồn điểm cả đội (cần phòng nhiều người)</option>
           </select>
         </div>
         <div class="form-group">
@@ -126,8 +137,21 @@
         <span class="copy-hint">📋 Bấm để copy link</span>
       </div>
 
+      <div class="waiting-mode-line" id="waitingModeLine"></div>
+      <div class="waiting-mode-rules" id="waitingModeRules"></div>
+
       <div class="players-list" id="waitingPlayersList">
         <!-- Render danh sách người chơi -->
+      </div>
+
+      <button type="button" class="btn-ready" id="btnReady" style="display: none;">✅ Tôi đã sẵn sàng</button>
+
+      <div class="waiting-chat">
+        <div class="chat-log" id="waitingChatLog"></div>
+        <div class="chat-input-row">
+          <input type="text" id="waitingChatInput" maxlength="60" placeholder="Chat với mọi người trong phòng..." autocomplete="off">
+          <button type="button" class="btn-nav" id="btnSendChat">Gửi</button>
+        </div>
       </div>
 
       <div style="display: flex; gap: 10px; margin-top: 20px;">
@@ -154,6 +178,9 @@
       <button type="button" class="btn-sound-toggle" id="btnToggleSound" title="Bật/Tắt âm thanh (Sound FX)">🔊</button>
       <button type="button" class="btn-submit-exam" id="btnSubmitExam">Nộp Bài 📝</button>
     </header>
+
+    <!-- Đường đua xếp hạng sống -->
+    <div class="race-track" id="raceTrack" style="display: none;"></div>
 
     <!-- ================= BANNER THEO DÕI GÓC NHÌN NGƯỜI CHƠI (FOLLOW MODE) ================= -->
     <div class="follow-mode-banner" id="followModeBanner" style="display: none;">
@@ -190,6 +217,7 @@
       </div>
       <div class="grb-actions">
         <button type="button" class="btn-sm-nav" id="btnOpenPodium">🏆 Bảng Vinh Danh</button>
+        <button type="button" class="btn-sm-nav" id="btnShareResult">📤 Chia sẻ</button>
         <button type="button" class="btn-sm-primary" id="btnBannerPlayAgain">🔄 Chơi Lại</button>
         <button type="button" class="btn-sm-nav" id="btnBannerLobby">🏠 Về Sảnh</button>
       </div>
@@ -202,6 +230,14 @@
 
       <!-- Khu vực hiển thị câu hỏi -->
       <div class="question-pane">
+        <div class="live-bar" id="liveBar" style="display: none;">
+          <div class="live-bar-top">
+            <span class="live-qnum" id="liveQNum">⚡ Câu 1</span>
+            <span class="live-msg" id="liveMsg"></span>
+            <span class="live-time" id="liveTime">15s</span>
+          </div>
+          <div class="live-track"><div class="live-fill" id="liveFill"></div></div>
+        </div>
         <div class="q-badge-bar">
           <span class="q-index-pill" id="qBadgeNum">Câu 1 / 30</span>
           <span class="q-chapter-pill" id="qBadgeChapter">Chương 1</span>
@@ -246,6 +282,14 @@
           </div>
 
           <button type="button" class="btn-nav" id="btnNextQ">Câu sau »</button>
+        </div>
+
+        <div class="quick-chat-bar" id="quickChatBar">
+          <button type="button" class="qc-btn" data-text="Nhanh lên nào! ⚡">Nhanh lên! ⚡</button>
+          <button type="button" class="qc-btn" data-text="Hay đấy! 👍">Hay đấy 👍</button>
+          <button type="button" class="qc-btn" data-text="Câu này khó quá 😵">Khó quá 😵</button>
+          <button type="button" class="qc-btn" data-text="Đợi mình với! 🙏">Đợi mình 🙏</button>
+          <button type="button" class="qc-btn" data-text="Mình sắp vượt rồi nhé 😎">Sắp vượt rồi 😎</button>
         </div>
       </div>
 
@@ -366,8 +410,46 @@
   </div>
 
   <!-- Canvas hiệu ứng pháo hoa ăn mừng -->
+  <!-- ================= MODAL ÔN TẬP ================= -->
+  <div class="modal-overlay" id="studyModal">
+    <div class="modal-content study-modal">
+      <div class="modal-header">
+        <h3>📚 Ôn Tập & Tiến Độ</h3>
+        <button type="button" class="modal-close-btn" id="btnCloseStudy">✕</button>
+      </div>
+      <div class="study-tabs">
+        <button type="button" class="study-tab active" data-tab="chapters">Theo chương</button>
+        <button type="button" class="study-tab" data-tab="search">Tra cứu câu hỏi</button>
+        <button type="button" class="study-tab" data-tab="badges">Huy hiệu & cấp</button>
+      </div>
+      <div class="study-pane active" id="study-chapters"></div>
+      <div class="study-pane" id="study-search">
+        <div class="study-search-row">
+          <input type="text" id="studySearchInput" placeholder="Gõ từ khóa (không cần dấu)..." autocomplete="off">
+          <select id="studyChapterFilter"><option value="0">Tất cả chương</option></select>
+          <span class="study-count" id="studySearchCount"></span>
+        </div>
+        <div id="studySearchResults"></div>
+      </div>
+      <div class="study-pane" id="study-badges"></div>
+    </div>
+  </div>
+
+  <!-- Đếm ngược trước khi vào trận -->
+  <div class="countdown-overlay" id="countdownOverlay">
+    <div class="countdown-box">
+      <div class="countdown-label">Chuẩn bị xuất phát</div>
+      <div class="countdown-num" id="countdownNum">3</div>
+    </div>
+  </div>
+
+  <div class="net-banner" id="netBanner" style="display: none;">⚠️ Mất kết nối — đang thử kết nối lại...</div>
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
   <canvas id="confettiCanvas" style="position: fixed; inset: 0; pointer-events: none; z-index: 9999; display: none;"></canvas>
 
+  <script src="./live.js"></script>
+  <script src="./study.js"></script>
   <script src="./game.js"></script>
 </body>
 </html>

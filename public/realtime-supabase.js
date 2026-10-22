@@ -157,6 +157,7 @@
         sock._fire('player-navigated', payload);
       });
       bc('reaction', 'player-reaction');
+      bc('fx', 'fx');
       channel.on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: 'code=eq.' + room }, refresh);
       channel.on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: 'room_code=eq.' + room }, refresh);
       channel.on('presence', { event: 'leave' }, ({ key }) => {
@@ -192,6 +193,11 @@
       refresh();
     }
 
+    sock.seedAnswers = (map) => {
+      Object.keys(map || {}).forEach(k => { answered[k] = map[k]; });
+      playerAnsweredListMap[sock.id] = Object.keys(answered).map(Number);
+    };
+
     const sendBc = (event, payload) => channel && channel.send({ type: 'broadcast', event, payload });
     const who = () => ({ playerId: sock.id, name: me.name, avatar: me.avatar, color: me.color });
 
@@ -212,6 +218,18 @@
           rpc('gp_join_room', { p_pid: sock.id, p_code: data.roomCode, p_name: data.name, p_avatar: data.avatar })
             .then(res => { if (res.success) joined(res); done(res); }).catch(fail);
           break;
+        case 'spectate-room': {
+          const code = String(data.roomCode || '').trim().toUpperCase();
+          sb.from('rooms').select('code').eq('code', code).maybeSingle().then(({ data: r, error }) => {
+            if (error) throw error;
+            if (!r) { done({ success: false, message: 'Phòng không tồn tại!' }); return; }
+            room = code; me = null; prev = null;
+            subscribe();
+            refresh();
+            done({ success: true, spectator: true, roomCode: code });
+          }).catch(fail);
+          break;
+        }
         case 'start-game':
           rpc('gp_start_game', { p_pid: sock.id, p_code: room }).then(refresh).catch(fail);
           break;
@@ -234,6 +252,9 @@
         case 'cursor-move':
           if (me) sendBc('cursor', Object.assign(who(), { x: data.xPercent, y: data.yPercent, qIndex: data.qIndex }));
           break;
+        case 'fx':
+          if (me) sendBc('fx', Object.assign({}, data, { from: sock.id }));
+          break;
         case 'send-reaction': {
           const payload = Object.assign(who(), { emoji: data.emoji });
           sendBc('reaction', payload);
@@ -254,8 +275,9 @@
       }
     };
 
+    // Chỉ báo rời phòng khi người chơi chủ động rời; tải lại/đóng tab thì Presence tự dọn sau vài giây (cho phép vào lại)
     window.addEventListener('pagehide', () => {
-      if (!room) return;
+      if (!room || !window.GPLX_LEAVING) return;
       try {
         fetch(URL + '/rest/v1/rpc/gp_leave', {
           method: 'POST', keepalive: true,

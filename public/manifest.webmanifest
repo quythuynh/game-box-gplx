@@ -1,0 +1,17 @@
+{
+  "name": "Đấu Trường Lý Thuyết GPLX B/B1",
+  "short_name": "GPLX B/B1",
+  "description": "Ôn và thi đấu trắc nghiệm 600 câu lý thuyết lái xe hạng B/B1 cùng bạn bè",
+  "lang": "vi",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0f19",
+  "theme_color": "#0b0f19",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

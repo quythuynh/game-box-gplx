@@ -55,6 +55,10 @@ const screenResult = document.getElementById('screenResult');
 function initApp() {
   ThemeEngine.init();
   loadProfileFromStorage();
+  Study.init();
+  registerServiceWorker();
+
+  Live.prepareSession();
 
   // Kết nối Socket.io
   const socket = io();
@@ -68,7 +72,12 @@ function initApp() {
   socket.on('connect', () => {
     state.myId = socket.id;
     console.log('⚡ Realtime sẵn sàng. ID:', socket.id);
+    Live.tryRejoin();
   });
+
+  socket.on('fx', (m) => Live.onFx(m));
+  socket.on('net-down', () => Live.netDown());
+  socket.on('net-up', () => Live.netUp());
 
   socket.on('disconnect', () => {
     console.warn('⚠️ Mất kết nối đến server.');
@@ -88,6 +97,7 @@ function initApp() {
         }
       });
     }
+    Live.onRoomState(state.players, room.players, room);
     state.players = room.players;
     state.gameMode = room.mode;
     state.timeLimit = room.timeLimit;
@@ -107,6 +117,18 @@ function initApp() {
 
   // Trận đấu bắt đầu
   socket.on('game-started', ({ room, questions }) => {
+    state.rejoining = false;
+    state.roomCode = room.code || state.roomCode;
+    state.gameMode = room.mode || state.gameMode;
+    Live.hideCountdown();
+    if (state.isSpectator) {
+      state.exam30 = questions;
+      state.players = room.players;
+      state.startedAt = room.startedAt;
+      state.timeLimit = room.timeLimit;
+      startSpectatorUI();
+      return;
+    }
     state.exam30 = questions;
     state.players = room.players;
     state.startedAt = room.startedAt;
@@ -149,6 +171,7 @@ function initApp() {
       }
     }
 
+    Live.onPeerProgress(data);
     updateOpponentsBar();
     updatePaletteGrid();
   });
@@ -166,7 +189,7 @@ function initApp() {
       if (sub && target) {
         sub.innerHTML = target.submitted
           ? `Người chơi đã nộp bài (Điểm: ${target.score ?? 0}/30) · Đang xem lại câu ${data.qIndex + 1}`
-          : `Đang làm bài (${target.totalAnswered ?? 0}/30 câu) · <span class="fmb-live-ticker">👁️ Đang xem Câu ${data.qIndex + 1} (Đang đọc đề)...</span>`;
+          : `Đang làm bài (${target.totalAnswered ?? Object.keys(target.answers || {}).length}/30 câu) · <span class="fmb-live-ticker">👁️ Đang xem Câu ${data.qIndex + 1} (Đang đọc đề)...</span>`;
       }
     }
     updateOpponentsBar();
@@ -174,6 +197,7 @@ function initApp() {
 
   // Người chơi nộp bài
   socket.on('player-submitted', (data) => {
+    if (data.playerId !== state.myId) Live.onPeerSubmitted(data);
     if (state.players[data.playerId]) {
       state.players[data.playerId].submitted = true;
       state.players[data.playerId].score = data.score;
@@ -182,7 +206,7 @@ function initApp() {
     if (state.followingPlayerId === data.playerId) {
       const sub = document.getElementById('fmbSub');
       if (sub) {
-        sub.innerHTML = `🏁 <b>${data.name || state.players[data.playerId]?.name}</b> vừa nộp bài! (Điểm: ${data.score ?? 0}/30)`;
+        sub.innerHTML = `🏁 <b>${esc(data.name || state.players[data.playerId]?.name)}</b> vừa nộp bài! (Điểm: ${data.score ?? 0}/30)`;
       }
     }
     updateOpponentsBar();
@@ -196,12 +220,16 @@ function initApp() {
 
   // Kết thúc ván đấu
   socket.on('game-ended', ({ rankings, room, questions }) => {
+    Live.sortRankings(rankings);
+    Live.stopSync();
+    Live.clearGame();
     saveMatchResultToStorage(rankings, questions);
     showResultScreen(rankings, questions);
   });
 
   // Người chơi thoát phòng
   socket.on('player-left', ({ playerId, name }) => {
+    Live.onPeerLeft(name || state.players[playerId]?.name);
     if (state.followingPlayerId === playerId) {
       stopFollowing();
     }
@@ -213,6 +241,13 @@ function initApp() {
 
   // Phòng restart ván mới
   socket.on('room-restarted', (room) => {
+    if (state.isSpectator) {
+      // Ván mới sắp bắt đầu: đưa khán giả về sảnh với mã phòng điền sẵn để vào chơi
+      window.GPLX_LEAVING = true;
+      window.location.href = `${window.location.pathname}?room=${room.code}`;
+      return;
+    }
+    Live.onRestart();
     state.isReviewMode = false;
     state.hasSubmitted = false;
     stopFollowing();
@@ -315,6 +350,34 @@ function checkUrlParamsForAutoJoin() {
 
 // ================= LOBBY EVENTS =================
 function setupLobbyEvents() {
+  // Nhớ lựa chọn lần trước ở sảnh (chế độ, thời gian, chế độ học tập)
+  const modeSel = document.getElementById('gameModeSelect');
+  const timeSel = document.getElementById('gameTimeSelect');
+  const instantChk = document.getElementById('chkInstantFeedback');
+  try {
+    const prefs = JSON.parse(localStorage.getItem('gplx_lobby_prefs') || 'null');
+    if (prefs) {
+      if ([...modeSel.options].some(o => o.value === prefs.mode)) modeSel.value = prefs.mode;
+      if ([...timeSel.options].some(o => o.value === prefs.time)) timeSel.value = prefs.time;
+      instantChk.checked = !!prefs.instant;
+    }
+  } catch (e) { /* ignore */ }
+  [modeSel, timeSel, instantChk].forEach(el => el.addEventListener('change', () => {
+    try {
+      localStorage.setItem('gplx_lobby_prefs', JSON.stringify({ mode: modeSel.value, time: timeSel.value, instant: instantChk.checked }));
+    } catch (e) { /* ignore */ }
+  }));
+
+  // Phím Enter: nhập mã phòng xong vào ngay, nhập tên xong tạo/vào phòng
+  document.getElementById('roomCodeInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('btnJoinRoom').click();
+  });
+  document.getElementById('playerNameInput').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const joining = document.getElementById('tabJoinPane').classList.contains('active');
+    document.getElementById(joining ? 'btnJoinRoom' : 'btnCreateRoom').click();
+  });
+
   // Thay đổi tên / avatar tự động lưu localStorage
   document.getElementById('playerNameInput').addEventListener('input', (e) => {
     const avatar = document.querySelector('.avatar-opt.selected')?.dataset.avatar || '🏎️';
@@ -388,6 +451,7 @@ function setupLobbyEvents() {
       if (res && res.success) {
         state.roomCode = res.roomCode;
         state.isHost = true;
+        Live.beginSession(res.roomCode);
         document.getElementById('displayRoomCode').textContent = res.roomCode;
         showScreen(screenWaiting);
       } else {
@@ -422,8 +486,12 @@ function setupLobbyEvents() {
       if (res && res.success) {
         state.roomCode = res.roomCode;
         state.isHost = false;
+        Live.beginSession(res.roomCode);
         document.getElementById('displayRoomCode').textContent = res.roomCode;
         showScreen(screenWaiting);
+      } else if (res && /đang diễn ra/.test(res.message || '')) {
+        // Trận đã bắt đầu: vào xem với tư cách khán giả
+        startSpectating(roomCode);
       } else {
         showLobbyError(res?.message || 'Mã phòng không tồn tại hoặc đã đủ người!');
       }
@@ -443,19 +511,30 @@ function setupLobbyEvents() {
 
   // Rời phòng
   document.getElementById('btnLeaveRoom').addEventListener('click', () => {
-    window.location.reload();
+    Live.leaveAndReload();
   });
 
   // Bắt đầu game (Host)
   document.getElementById('btnStartGame').addEventListener('click', () => {
-    if (state.isHost) {
-      state.socket.emit('start-game');
-    }
+    Live.hostStart();
+  });
+
+  const btnReady = document.getElementById('btnReady');
+  if (btnReady) btnReady.addEventListener('click', () => Live.toggleReady());
+
+  const chatInput = document.getElementById('waitingChatInput');
+  const submitChat = () => {
+    Live.sendChat(chatInput.value);
+    chatInput.value = '';
+  };
+  document.getElementById('btnSendChat').addEventListener('click', submitChat);
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submitChat();
   });
 
   // Về sảnh chính từ màn hình kết quả
   document.getElementById('btnBackToLobby').addEventListener('click', () => {
-    window.location.reload();
+    Live.leaveAndReload();
   });
 }
 
@@ -463,25 +542,44 @@ function renderWaitingList() {
   const listEl = document.getElementById('waitingPlayersList');
   const players = Object.values(state.players);
 
-  listEl.innerHTML = players.map(p => `
+  listEl.innerHTML = players.map(p => {
+    const isReady = Live.isReady(p);
+    return `
     <div class="player-item">
       <div class="player-info">
         <div class="player-avatar" style="border: 2px solid ${p.color};">${p.avatar}</div>
         <div>
-          <span class="player-name">${p.name} ${p.id === state.myId ? '(Bạn)' : ''}</span>
+          <span class="player-name">${Live.dot(p.id)} ${Live.teamBadge(p.id)} ${esc(p.name)} ${p.id === state.myId ? '(Bạn)' : ''}</span>
           ${p.isHost ? '<span class="player-tag">👑 Trưởng phòng</span>' : ''}
         </div>
       </div>
-      <span class="status-badge ready">● Sẵn sàng</span>
-    </div>
-  `).join('');
+      <span class="status-badge ${isReady ? 'ready' : 'waiting'}">${isReady ? '● Sẵn sàng' : '○ Chưa sẵn sàng'}</span>
+    </div>`;
+  }).join('');
 
+  const rulesLine = document.getElementById('waitingModeRules');
+  if (rulesLine) rulesLine.textContent = Live.modeRules(state.gameMode);
+  const modeLine = document.getElementById('waitingModeLine');
+  if (modeLine) {
+    modeLine.textContent = `${Live.modeLabel(state.gameMode)}${Live.isSyncMode(state.gameMode) ? '' : ` · ${Math.round(state.timeLimit / 60)} phút`}`;
+  }
+
+  const { ok, all } = Live.readyCounts(state.players);
   const btnStart = document.getElementById('btnStartGame');
+  const btnReady = document.getElementById('btnReady');
   if (state.isHost) {
     btnStart.style.display = 'block';
-    btnStart.textContent = `🏁 Bắt Đầu Thi Đấu (${players.length} người)`;
+    btnStart.textContent = `🏁 Bắt Đầu Thi Đấu (${ok}/${all} sẵn sàng)`;
+    if (btnReady) btnReady.style.display = 'none';
   } else {
     btnStart.style.display = 'none';
+    if (btnReady) {
+      btnReady.style.display = 'block';
+      const me = state.players[state.myId];
+      const isReady = me ? Live.isReady(me) : false;
+      btnReady.classList.toggle('on', isReady);
+      btnReady.textContent = isReady ? '✅ Đã sẵn sàng (bấm để hủy)' : '✅ Tôi đã sẵn sàng';
+    }
   }
 }
 
@@ -500,18 +598,26 @@ function generate30ClientQuestions(allQuestions, mode = 'standard') {
   }
 
   if (mode === 'wrong') {
-    const wrongMap = JSON.parse(localStorage.getItem(STORAGE_KEYS.WRONG_QUESTIONS) || '{}');
-    const wrongIds = Object.keys(wrongMap).map(Number);
-    if (wrongIds.length === 0) {
+    // Lặp lại ngắt quãng: câu đến hạn ôn lên trước, rồi tới các câu sai còn lại
+    const { due, rest } = Study.wrongPool(allQuestions);
+    if (due.length + rest.length === 0) {
       return null;
     }
-    const wrongList = allQuestions.filter(q => wrongIds.includes(q.id));
+    const wrongList = [...sample(due, 30), ...sample(rest, 30)].slice(0, 30);
     if (wrongList.length >= 30) {
-      return sample(wrongList, 30);
+      return wrongList.sort((a, b) => a.id - b.id);
     }
     const pickedIds = new Set(wrongList.map(q => q.id));
     const pad = sample(allQuestions.filter(q => !pickedIds.has(q.id)), 30 - wrongList.length);
     return [...wrongList, ...pad].sort((a, b) => a.id - b.id);
+  }
+
+  if (mode.startsWith('chapter:')) {
+    const ch = Number(mode.split(':')[1]);
+    const own = sample(allQuestions.filter(q => q.chapter === ch), 30);
+    if (own.length >= 30) return own.sort((a, b) => a.id - b.id);
+    const ids = new Set(own.map(q => q.id));
+    return [...own, ...sample(allQuestions.filter(q => !ids.has(q.id)), 30 - own.length)];
   }
 
   if (mode === 'critical') {
@@ -537,11 +643,19 @@ function generate30ClientQuestions(allQuestions, mode = 'standard') {
   return exam.slice(0, 30);
 }
 
-async function startSoloPractice() {
+async function startSoloPractice(opts) {
+  // Có thể gọi từ màn Ôn tập với { mode, instant, timeLimit }; khi gắn vào nút bấm thì tham số là sự kiện
+  opts = (opts && opts.mode) ? opts : {};
   const { name, avatar } = getMyProfile();
-  const mode = document.getElementById('gameModeSelect').value;
-  const timeLimit = parseInt(document.getElementById('gameTimeSelect').value, 10);
-  const instantFeedback = document.getElementById('chkInstantFeedback').checked;
+  const mode = opts.mode || document.getElementById('gameModeSelect').value;
+  const timeLimit = opts.timeLimit || parseInt(document.getElementById('gameTimeSelect').value, 10);
+  const instantFeedback = opts.instant ?? document.getElementById('chkInstantFeedback').checked;
+  state.lastSoloOpts = opts.mode ? opts : null;
+
+  if (Live.isSyncMode(mode)) {
+    showLobbyError('Chế độ Đồng bộ / Sinh tồn / Đồng đội cần phòng nhiều người. Hãy tạo phòng hoặc chọn chế độ khác để luyện solo.');
+    return;
+  }
 
   const btn = document.getElementById('btnSoloPractice');
   if (btn) {
@@ -602,6 +716,62 @@ async function startSoloPractice() {
 }
 window.startSoloPractice = startSoloPractice;
 
+// ================= KHÁN GIẢ =================
+function startSpectating(roomCode) {
+  state.isSpectator = true;
+  state.socket.emit('spectate-room', { roomCode }, (res) => {
+    if (res && res.success) {
+      state.roomCode = res.roomCode;
+      document.getElementById('displayRoomCode').textContent = res.roomCode;
+      Live.toast('👁️ Trận đang diễn ra — bạn vào xem với tư cách khán giả', 'ok', 4500);
+    } else {
+      state.isSpectator = false;
+      showLobbyError(res?.message || 'Không thể vào xem phòng này!');
+    }
+  });
+}
+
+function startSpectatorUI() {
+  state.currentQIndex = 0;
+  state.myAnswers = {};
+  state.isReviewMode = false;
+  state.hasSubmitted = true;
+  state.flaggedQuestions.clear();
+  stopFollowing();
+  state.rankings = [];
+  Live.onSpectatorStart();
+
+  const banner = document.getElementById('gameResultBanner');
+  if (banner) banner.style.display = 'none';
+  const subBtn = document.getElementById('btnSubmitExam');
+  if (subBtn) {
+    subBtn.disabled = true;
+    subBtn.textContent = '👁️ Khán giả';
+  }
+  const chat = document.getElementById('quickChatBar');
+  if (chat) chat.style.display = 'none';
+
+  showScreen(screenGame);
+  renderPaletteGrid();
+  renderQuestion(0);
+  updateOpponentsBar();
+  if (!Live.isLive()) {
+    const elapsed = Math.floor((Date.now() - state.startedAt) / 1000);
+    state.timeRemaining = Math.max(0, state.timeLimit - elapsed);
+    clearInterval(state.timerInterval);
+    updateTimerDisplay();
+    state.timerInterval = setInterval(() => {
+      state.timeRemaining = Math.max(0, state.timeRemaining - 1);
+      updateTimerDisplay();
+    }, 1000);
+  } else {
+    document.getElementById('timerText').textContent = '👁️';
+  }
+  // Tự theo dõi góc nhìn của người đang dẫn đầu (người đầu tiên) để có hình ảnh ngay
+  const first = Object.keys(state.players)[0];
+  if (first) startFollowing(first);
+}
+
 // ================= GAMEPLAY =================
 function startExamUI() {
   state.currentQIndex = 0;
@@ -611,31 +781,44 @@ function startExamUI() {
   state.flaggedQuestions.clear();
   stopFollowing();
   state.rankings = [];
+  const resumed = Live.restoreGame();
 
   const banner = document.getElementById('gameResultBanner');
   if (banner) banner.style.display = 'none';
   const subBtn = document.getElementById('btnSubmitExam');
   if (subBtn) {
-    subBtn.disabled = false;
-    subBtn.textContent = 'Nộp Bài 📝';
+    subBtn.disabled = state.hasSubmitted;
+    subBtn.textContent = state.hasSubmitted ? 'Đã nộp bài ✅' : 'Nộp Bài 📝';
   }
 
   showScreen(screenGame);
 
   renderPaletteGrid();
+  const handledByLive = Live.onExamStart(resumed);
   renderQuestion(state.currentQIndex);
   updateOpponentsBar();
-  startTimer();
+  if (state.hasSubmitted) {
+    document.getElementById('timerText').textContent = 'ĐÃ NỘP';
+    return;
+  }
+  if (!handledByLive) startTimer(resumed);
+  if (resumed) Live.toast('🔄 Đã khôi phục bài làm của bạn', 'ok');
 }
 
-function startTimer() {
+function startTimer(resumed = false) {
   clearInterval(state.timerInterval);
   state.timeRemaining = state.timeLimit;
+  if (resumed && state.startedAt) {
+    // Vào lại giữa trận: tính thời gian còn lại từ lúc bắt đầu
+    const elapsed = Math.floor((Date.now() - state.startedAt) / 1000);
+    state.timeRemaining = Math.max(1, Math.min(state.timeLimit, state.timeLimit - elapsed));
+  }
   updateTimerDisplay();
 
   state.timerInterval = setInterval(() => {
     state.timeRemaining--;
     updateTimerDisplay();
+    Live.timeToast(state.timeRemaining);
 
     if (state.timeRemaining <= 0) {
       clearInterval(state.timerInterval);
@@ -659,6 +842,7 @@ function updateTimerDisplay() {
 
 function renderQuestion(index) {
   if (!state.exam30 || !state.exam30[index]) return;
+  if (Live.blockNav(index)) return;
 
   if (state.currentQIndex !== undefined && state.currentQIndex !== null && state.currentQIndex !== index) {
     SoundEngine.playNav();
@@ -709,7 +893,7 @@ function renderQuestion(index) {
   // Danh sách lựa chọn
   const optionsContainer = document.getElementById('optionsContainer');
   const mySelected = state.myAnswers[index];
-  const isRevealed = state.isReviewMode || (state.instantFeedback && mySelected !== undefined);
+  const isRevealed = state.isReviewMode || (state.instantFeedback && mySelected !== undefined) || Live.revealNow(index);
 
   // Cập nhật huy hiệu kết quả trên thanh badge (✓ Đúng / ✗ Sai)
   const resultPill = document.getElementById('qBadgeResult');
@@ -776,9 +960,17 @@ function renderQuestion(index) {
       const opponentsPicked = state.rankings.filter(p => p.id !== state.myId && p.answers?.[index] === optNum);
       opponentsHtml = opponentsPicked.map(p => `
         <span class="op-choice-badge ${isCorrectOption ? '' : 'wrong-pick'}" style="background: ${p.color};">
-          ${p.avatar} ${p.name} ${isCorrectOption ? '✓' : '✗'}
+          ${p.avatar} ${esc(p.name)} ${isCorrectOption ? '✓' : '✗'}
         </span>
       `).join('');
+    } else if (Live.revealNow(index)) {
+      opponentsHtml = Object.values(state.players)
+        .filter(p => p.id !== state.myId && p.answers?.[index] === optNum)
+        .map(p => `
+          <span class="op-choice-badge ${isCorrectOption ? '' : 'wrong-pick'}" style="background: ${p.color};">
+            ${p.avatar} ${esc(p.name)} ${isCorrectOption ? '✓' : '✗'}
+          </span>
+        `).join('');
     }
 
     return `
@@ -815,13 +1007,16 @@ function renderQuestion(index) {
   document.getElementById('btnNextQ').disabled = index >= 29;
 
   updatePaletteCurrent(index);
+  Live.afterRender(index);
+  Live.saveGame();
 
   // Gửi vị trí câu đang xem
-  state.socket.emit('navigate-question', { qIndex: index });
+  if (!state.isSpectator) state.socket.emit('navigate-question', { qIndex: index });
 }
 
 function selectMyAnswer(qIndex, optionIndex) {
   if (state.isReviewMode || state.hasSubmitted) return;
+  if (!Live.canAnswer(qIndex)) return;
 
   SoundEngine.playSelect();
 
@@ -831,6 +1026,7 @@ function selectMyAnswer(qIndex, optionIndex) {
   }
 
   state.myAnswers[qIndex] = optionIndex;
+  Live.onAnswered(qIndex, optionIndex);
 
   // Báo động đỏ khi phạm câu điểm liệt trong Chế độ Học tập
   const q = state.exam30[qIndex];
@@ -895,12 +1091,12 @@ function updateOpponentsBar() {
     }
 
     return `
-      <div class="opponent-card ${isMe ? 'me' : ''} ${isFollowing ? 'following' : ''}" data-pid="${p.id}" data-can-follow="${canFollow}" style="${canFollow ? 'cursor: pointer;' : ''}" title="${canFollow ? (isFollowing ? 'Bấm để dừng theo dõi' : 'Bấm để theo dõi góc nhìn của ' + p.name) : ''}">
+      <div class="opponent-card ${isMe ? 'me' : ''} ${isFollowing ? 'following' : ''}" data-pid="${p.id}" data-can-follow="${canFollow}" style="${canFollow ? 'cursor: pointer;' : ''}" title="${canFollow ? (isFollowing ? 'Bấm để dừng theo dõi' : 'Bấm để theo dõi góc nhìn của ' + esc(p.name)) : ''}">
         <span class="op-avatar">${p.avatar}</span>
         <div class="op-meta">
           <div class="op-name">
             <span class="op-color-dot" style="background: ${p.color};"></span>
-            <span>${p.name}${isMe ? ' (Bạn)' : ''}</span>
+            <span>${esc(p.name)}${isMe ? ' (Bạn)' : ''}</span>
             ${followBtnHtml}
           </div>
           <div class="op-progress-txt">
@@ -913,6 +1109,8 @@ function updateOpponentsBar() {
       </div>
     `;
   }).join('');
+
+  Live.updateRace();
 
   bar.querySelectorAll('.btn-follow-toggle').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -970,7 +1168,7 @@ function showFollowerOptionSelection(playerId, qIndex, optionIndex) {
     const badge = document.createElement('span');
     badge.className = 'follow-choice-badge';
     badge.style.background = p.color || '#3b82f6';
-    badge.innerHTML = `${p.avatar || '🏎️'} ${p.name} đã chọn`;
+    badge.innerHTML = `${p.avatar || '🏎️'} ${esc(p.name)} đã chọn`;
     targetTag.appendChild(badge);
   }
 }
@@ -1005,7 +1203,7 @@ function startFollowing(pid) {
     if (sub) {
       sub.innerHTML = target.submitted
         ? `Người chơi đã nộp bài (Điểm: ${target.score ?? 0}/30) · Đang xem lại câu ${targetQ + 1}`
-        : `Đang làm bài (${target.totalAnswered ?? 0}/30 câu) · <span class="fmb-live-ticker">👁️ Đang xem Câu ${targetQ + 1}</span>`;
+        : `Đang làm bài (${target.totalAnswered ?? Object.keys(target.answers || {}).length}/30 câu) · <span class="fmb-live-ticker">👁️ Đang xem Câu ${targetQ + 1}</span>`;
     }
   }
 
@@ -1036,6 +1234,7 @@ function toggleFlag(index) {
   }
   renderQuestion(index);
   updatePaletteGrid();
+  Live.saveGame();
 }
 window.toggleFlag = toggleFlag;
 
@@ -1056,7 +1255,7 @@ function updateOptionOpponentBadges() {
         const badge = document.createElement('span');
         badge.className = 'op-choice-badge';
         badge.style.background = p.color;
-        badge.innerHTML = `${p.avatar} ${p.name}`;
+        badge.innerHTML = `${p.avatar} ${esc(p.name)}`;
         container.appendChild(badge);
       }
     }
@@ -1132,7 +1331,7 @@ function updatePaletteGrid() {
           .filter(p => p.id !== state.myId && p.answers && p.answers[i] !== undefined)
           .map(p => {
             const pRight = p.answers[i] === q.correct_option;
-            return `<span class="pallet-dot" style="background: ${pRight ? '#10b981' : '#ef4444'};" title="${p.name}: ${pRight ? 'Đúng' : 'Sai'}"></span>`;
+            return `<span class="pallet-dot" style="background: ${pRight ? '#10b981' : '#ef4444'};" title="${esc(p.name)}: ${pRight ? 'Đúng' : 'Sai'}"></span>`;
           }).join('');
       }
     }
@@ -1159,8 +1358,18 @@ function updatePaletteGrid() {
         if (p.id === state.myId) return false;
         return (p.answeredList && p.answeredList.includes(i)) || (p.answers && p.answers[i] !== undefined);
       })
-      .map(p => `<span class="pallet-dot" style="background: ${p.color};" title="${p.name} đã làm câu này"></span>`)
+      .map(p => `<span class="pallet-dot" style="background: ${p.color};" title="${esc(p.name)} đã làm câu này"></span>`)
       .join('');
+  }
+}
+
+function registerServiceWorker() {
+  // Chỉ đăng ký trên bản triển khai (hoặc khi bật thủ công) để không cache nhầm lúc phát triển local
+  const isLocal = ['localhost', '127.0.0.1'].includes(location.hostname);
+  let forced = false;
+  try { forced = localStorage.getItem('gplx_sw') === '1'; } catch (e) { /* ignore */ }
+  if ('serviceWorker' in navigator && (!isLocal || forced)) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 }
 
@@ -1168,9 +1377,27 @@ function updatePaletteGrid() {
 function setupGameEvents() {
   const arena = document.getElementById('arenaContainer');
 
+  // Vuốt ngang trên điện thoại để chuyển câu
+  const pane = document.querySelector('.question-pane');
+  let touch = null;
+  pane.addEventListener('touchstart', (e) => {
+    touch = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+  }, { passive: true });
+  pane.addEventListener('touchend', (e) => {
+    if (!touch || document.body.classList.contains('live-mode') || state.isSpectator) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touch.x;
+    const dy = t.clientY - touch.y;
+    touch = null;
+    if (Math.abs(dx) > 70 && Math.abs(dy) < 45) {
+      document.getElementById(dx < 0 ? 'btnNextQ' : 'btnPrevQ').click();
+    }
+  }, { passive: true });
+
   arena.addEventListener('mousemove', (e) => {
+    if (state.isSpectator) return;
     const now = Date.now();
-    if (now - state.lastCursorSend < 35) return;
+    if (now - state.lastCursorSend < 90) return; // ~11 lần/giây: đủ mượt nhờ nội suy, nhẹ cho Realtime
     state.lastCursorSend = now;
 
     const rect = arena.getBoundingClientRect();
@@ -1262,15 +1489,19 @@ function setupGameEvents() {
     });
   });
 
+  document.querySelectorAll('.qc-btn').forEach(btn => {
+    btn.addEventListener('click', () => Live.sendChat(btn.dataset.text));
+  });
+
   document.getElementById('btnPlayAgain').addEventListener('click', () => {
     if (state.isSolo) {
-      startSoloPractice();
+      startSoloPractice(state.lastSoloOpts);
       return;
     }
     if (state.isHost) {
       state.socket.emit('restart-game');
     } else {
-      alert('Vui lòng đợi chủ phòng bắt đầu lại ván mới!');
+      Live.voteRematch();
     }
   });
 
@@ -1298,6 +1529,9 @@ function setupGameEvents() {
     });
   });
 
+  const btnShare = document.getElementById('btnShareResult');
+  if (btnShare) btnShare.addEventListener('click', () => Live.shareResult());
+
   const btnOpenPodium = document.getElementById('btnOpenPodium');
   if (btnOpenPodium) {
     btnOpenPodium.addEventListener('click', () => {
@@ -1323,13 +1557,13 @@ function setupGameEvents() {
   if (btnBannerPlayAgain) {
     btnBannerPlayAgain.addEventListener('click', () => {
       if (state.isSolo) {
-        startSoloPractice();
+        startSoloPractice(state.lastSoloOpts);
         return;
       }
       if (state.isHost) {
         state.socket.emit('restart-game');
       } else {
-        alert('Vui lòng đợi chủ phòng bắt đầu lại ván mới!');
+        Live.voteRematch();
       }
     });
   }
@@ -1339,13 +1573,13 @@ function setupGameEvents() {
     btnModalPlayAgain.addEventListener('click', () => {
       document.getElementById('podiumModal').classList.remove('active');
       if (state.isSolo) {
-        startSoloPractice();
+        startSoloPractice(state.lastSoloOpts);
         return;
       }
       if (state.isHost) {
         state.socket.emit('restart-game');
       } else {
-        alert('Vui lòng đợi chủ phòng bắt đầu lại ván mới!');
+        Live.voteRematch();
       }
     });
   }
@@ -1353,13 +1587,22 @@ function setupGameEvents() {
   const btnBannerLobby = document.getElementById('btnBannerLobby');
   if (btnBannerLobby) {
     btnBannerLobby.addEventListener('click', () => {
-      window.location.reload();
+      Live.leaveAndReload();
     });
   }
 }
 
 function renderRemoteCursor(playerId, name, avatar, color, xPercent, yPercent, qIndex) {
   if (playerId === state.myId) return;
+  const known = state.players[playerId];
+  if (known) {
+    name = name || known.name;
+    avatar = avatar || known.avatar;
+    color = color || known.color;
+  }
+  name = esc(name || '');
+  avatar = avatar || '🏎️';
+  color = color || '#3b82f6';
 
   const overlay = document.getElementById('cursorOverlay');
   let cursorEl = document.getElementById(`cursor-${playerId}`);
@@ -1392,6 +1635,11 @@ function renderRemoteCursor(playerId, name, avatar, color, xPercent, yPercent, q
 
   cursorEl.style.zIndex = isFollowed ? '100' : '50';
   cursorEl.style.opacity = (state.followingPlayerId && !isFollowed) ? '0.2' : '1';
+  // Làm mượt: thời gian trượt bằng đúng khoảng cách giữa 2 lần cập nhật
+  const now = Date.now();
+  const dt = cursorEl._lastAt ? now - cursorEl._lastAt : 120;
+  cursorEl._lastAt = now;
+  cursorEl.style.transitionDuration = `${Math.min(650, Math.max(60, dt))}ms`;
   cursorEl.style.left = `${xPercent * 100}%`;
   cursorEl.style.top = `${yPercent * 100}%`;
 }
@@ -1402,8 +1650,11 @@ function removeRemoteCursor(playerId) {
 }
 
 function handleSubmitExam() {
+  if (state.isSpectator) return;
   clearInterval(state.timerInterval);
+  Live.stopSync();
   state.hasSubmitted = true;
+  Live.saveGame();
   document.getElementById('btnSubmitExam').disabled = true;
   document.getElementById('btnSubmitExam').textContent = 'Đã nộp bài ✅';
 
@@ -1449,9 +1700,11 @@ function handleSubmitExam() {
 function saveMatchResultToStorage(rankings, questions) {
   const myRecord = rankings.find(p => p.id === state.myId);
   if (!myRecord) return;
+  const isLive = Live.isLive();
+  if (isLive) questions = questions.slice(0, Live.total);
 
   try {
-    // 1. Lưu vào danh sách lịch sử trận đấu
+    // 1. Lưu vào danh sách lịch sử trận đấu (ván đồng bộ chỉ có 15 câu nên không tính vào tỉ lệ đạt)
     const history = JSON.parse(localStorage.getItem(STORAGE_KEYS.HISTORY) || '[]');
     const newEntry = {
       id: Date.now(),
@@ -1464,23 +1717,14 @@ function saveMatchResultToStorage(rankings, questions) {
       answerChanges: state.behavior.answerChangesCount,
       totalQuestions: 30
     };
-    history.unshift(newEntry);
-    localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history.slice(0, 30))); // Lưu tối đa 30 trận gần nhất
+    const isChapterPractice = String(state.gameMode).startsWith('chapter:');
+    if (!isLive && !isChapterPractice) {
+      history.unshift(newEntry);
+      localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history.slice(0, 30))); // Lưu tối đa 30 trận gần nhất
+    }
 
-    // 2. Lưu các câu làm sai để người dùng ôn lại
-    const wrongMap = JSON.parse(localStorage.getItem(STORAGE_KEYS.WRONG_QUESTIONS) || '{}');
-    questions.forEach((q, idx) => {
-      const myChoice = state.myAnswers[idx];
-      if (myChoice !== q.correct_option) {
-        wrongMap[q.id] = {
-          id: q.id,
-          question: q.question.slice(0, 80) + '...',
-          is_critical: q.is_critical,
-          wrongCount: (wrongMap[q.id]?.wrongCount || 0) + 1,
-        };
-      }
-    });
-    localStorage.setItem(STORAGE_KEYS.WRONG_QUESTIONS, JSON.stringify(wrongMap));
+    // 2. Câu sai (lặp lại ngắt quãng), thống kê theo chương, chuỗi ngày, XP
+    Study.recordResult(questions, state.myAnswers, state.gameMode === 'standard' && myRecord.passed);
 
   } catch (err) {
     console.warn('Lỗi lưu lịch sử localStorage:', err);
@@ -1511,6 +1755,9 @@ function setupHistoryModalEvents() {
     if (confirm('Bạn có chắc chắn muốn xóa toàn bộ lịch sử đấu và danh sách câu sai trên localStorage không?')) {
       localStorage.removeItem(STORAGE_KEYS.HISTORY);
       localStorage.removeItem(STORAGE_KEYS.WRONG_QUESTIONS);
+      localStorage.removeItem('gplx_chapter_stats');
+      localStorage.removeItem('gplx_progress');
+      Study.renderChip();
       renderHistoryModal();
     }
   });
@@ -1639,6 +1886,14 @@ const SoundEngine = {
     [220, 180, 220, 180].forEach((f, i) => {
       setTimeout(() => this.beep(f, 'sawtooth', 0.15), i * 160);
     });
+  },
+  playCountdown(n) { this.beep(n === 1 ? 660 : 520, 'square', 0.12); },
+  playGo() {
+    [784, 988, 1175].forEach((f, i) => setTimeout(() => this.beep(f, 'triangle', 0.16), i * 90));
+  },
+  playChat() { this.beep(698, 'sine', 0.05); },
+  playOvertake() {
+    [523, 659, 880].forEach((f, i) => setTimeout(() => this.beep(f, 'triangle', 0.09), i * 70));
   },
   playVictory() {
     [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
@@ -1769,7 +2024,7 @@ function showResultScreen(rankings, questions) {
   // Đếm số câu làm sai & câu điểm liệt
   let wrongCount = 0;
   let critCount = 0;
-  questions.forEach((q, idx) => {
+  questions.slice(0, Live.questionCount()).forEach((q, idx) => {
     const isCorrect = (state.myAnswers[idx] === q.correct_option);
     if (!isCorrect) {
       wrongCount++;
@@ -1786,7 +2041,7 @@ function showResultScreen(rankings, questions) {
   renderPodiumModal(rankings);
 
   // 5. Nạp ngay câu hỏi làm sai đầu tiên (hoặc câu 1 nếu đúng hết) trực tiếp lên phần câu hỏi
-  let firstWrongIdx = questions.findIndex((q, idx) => state.myAnswers[idx] !== q.correct_option);
+  let firstWrongIdx = questions.slice(0, Live.questionCount()).findIndex((q, idx) => state.myAnswers[idx] !== q.correct_option);
   const targetIdx = firstWrongIdx !== -1 ? firstWrongIdx : 0;
   renderQuestion(targetIdx);
 
@@ -1795,6 +2050,8 @@ function showResultScreen(rankings, questions) {
 
   // Đồng thời chuẩn bị sẵn dữ liệu cho màn hình kết quả phụ (nếu cần xem toàn bộ 30 câu cùng lúc)
   renderLegacyReviewCards(rankings, questions, myRecord);
+  Live.decorateResult(rankings);
+  Live.updateRace();
 }
 
 function renderPodiumModal(rankings) {
@@ -1805,12 +2062,14 @@ function renderPodiumModal(rankings) {
     <div class="podium-slot rank-${idx + 1}">
       <div class="podium-crown">${crowns[idx]}</div>
       <div style="font-size: 2rem; margin: 4px 0;">${p.avatar}</div>
-      <div class="podium-name">${p.name}</div>
-      <div class="podium-score">${p.score} / 30</div>
+      <div class="podium-name">${esc(p.name)}</div>
+      <div class="podium-score">${p.livePts !== undefined ? `${p.livePts} điểm` : `${p.score} / 30`}</div>
       <div style="margin-top: 8px;">
-        ${p.passed 
-          ? '<span class="badge-tag pass">🎉 ĐẠT B/B1</span>' 
-          : `<span class="badge-tag fail">${p.failedCritical ? '⚠️ RỚT (Sai liệt)' : '❌ KHÔNG ĐẠT'}</span>`
+        ${p.livePts !== undefined
+          ? `<span class="badge-tag pass">⚡ Đúng ${Math.min(p.score, Live.total)} câu</span>`
+          : (p.passed
+            ? '<span class="badge-tag pass">🎉 ĐẠT B/B1</span>'
+            : `<span class="badge-tag fail">${p.failedCritical ? '⚠️ RỚT (Sai liệt)' : '❌ KHÔNG ĐẠT'}</span>`)
         }
       </div>
       <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 6px;">
@@ -1849,7 +2108,7 @@ function renderLegacyReviewCards(rankings, questions, myRecord) {
               const isPRight = (optNum === q.correct_option);
               return `
                 <span class="op-choice-badge ${isPRight ? '' : 'wrong-pick'}" style="background: ${p.color};">
-                  ${p.avatar} ${p.name} ${isPRight ? '✓' : '✗'}
+                  ${p.avatar} ${esc(p.name)} ${isPRight ? '✓' : '✗'}
                   ${isCritical && !isPRight ? ' (Liệt)' : ''}
                 </span>
               `;
