@@ -64,7 +64,7 @@ const Live = (() => {
     active: false, total: 15, T: 15, R: 5, epoch: 0, q: -1, phase: '', timer: null, ticks: 0,
     locked: false, msg: '', lastSec: -1,
     mine: { total: 0, gain: 0, streak: 0, done: -1, out: -1 },
-    pts: {}, ans: {}, picks: {}, ending: false
+    pts: {}, ans: {}, picks: {}, told: {}, ending: false
   };
   let endTimer = null;
   const offlineWarned = {};
@@ -399,8 +399,8 @@ const Live = (() => {
           out: Number.isInteger(m.out) ? m.out : -1,
           lives: Number.isInteger(m.lives) ? m.lives : 1
         };
-        if (isSurvival() && sync.pts[m.from].out >= 0 && p && !sync.pts[m.from].told) {
-          sync.pts[m.from].told = true;
+        if (isSurvival() && sync.pts[m.from].out >= 0 && p && !sync.told[m.from]) {
+          sync.told[m.from] = true;
           toast(`💀 ${p.name} bị loại ở câu ${sync.pts[m.from].out + 1}!`, 'down');
         }
         updateRace();
@@ -681,6 +681,7 @@ const Live = (() => {
     sync.pts = {};
     sync.ans = {};
     sync.picks = {};
+    sync.told = {};
     sync.ending = false;
     clearTimeout(endTimer);
     document.body.classList.remove('eliminated');
