@@ -2,7 +2,7 @@ const store = require('./store');
 const questionsData = require('../../data/questions_600_bca.json');
 
 const TTL = 60 * 60 * 6;
-const STALE_MS = 30000;
+const STALE_MS = 15000;
 const MAX_EVENTS = 300;
 const MAX_PLAYERS = 6;
 const FX_PER_SEC = 6;

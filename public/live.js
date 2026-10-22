@@ -656,9 +656,17 @@ const Live = (() => {
     keepAwake(true);
     const bar = $('liveBar');
     if (bar) bar.style.display = isLive() ? 'block' : 'none';
-    if (!isLive()) return false;
+    if (!isLive()) {
+      delete document.body.dataset.liveTotal;
+      const t30 = document.querySelector('.palette-title');
+      if (t30) t30.textContent = 'Danh sách 30 câu';
+      return false;
+    }
     sync.total = isSurvival() ? 20 : 15;
     sync.T = isSurvival() ? 12 : 15;
+    document.body.dataset.liveTotal = String(sync.total);
+    const palTitle = document.querySelector('.palette-title');
+    if (palTitle) palTitle.textContent = `Danh sách ${sync.total} câu`;
     if (!resumed) {
       sync.mine = { total: 0, gain: 0, streak: 0, done: -1, out: -1 };
       assignTeams();
@@ -681,7 +689,8 @@ const Live = (() => {
   function survivalOver() {
     if (!isSurvival()) return false;
     const list = Object.values(state.players);
-    if (list.length < 2) return false;
+    // Chỉ còn mình trong phòng (mọi người khác đã rời): mình bị loại thì kết thúc luôn
+    if (list.length < 2) return isEliminated();
     return list.filter(p => outOf(p.id) < 0).length <= 1;
   }
 
@@ -714,7 +723,8 @@ const Live = (() => {
     const q = Math.floor(el / cycle);
     // Tab bị trình duyệt làm chậm có thể bỏ lỡ pha công bố: tính bù các câu đã qua
     for (let k = sync.mine.done + 1; k < Math.min(q, sync.total); k++) onReveal(k);
-    if (q >= sync.total || (q > sync.q && q > 0 && survivalOver())) { finishSync(); return; }
+    // Kiểm tra mỗi nhịp (không chỉ lúc chuyển câu) để kết thúc ngay khi biết chỉ còn ≤1 người sống
+    if (q >= sync.total || (sync.mine.done >= 0 && survivalOver())) { finishSync(); return; }
     const within = el - q * cycle;
     const phase = within < sync.T ? 'answer' : 'reveal';
     const left = phase === 'answer' ? sync.T - within : cycle - within;
@@ -900,8 +910,8 @@ const Live = (() => {
       badge.textContent = `${pts}đ`;
     } else if (isSurvival()) {
       const me = rankings[idx] || {};
-      win = rank === 1;
-      title = rank === 1 && n > 1
+      win = rank === 1 && me.out < 0;
+      title = rank === 1 && n > 1 && me.out < 0
         ? `👑 BẠN LÀ NGƯỜI SỐNG SÓT CUỐI CÙNG! (${pts} điểm)`
         : (me.out >= 0 ? `💀 Bạn bị loại ở câu ${me.out + 1} — hạng ${rank}/${n}` : `Bạn về hạng ${rank}/${n} với ${pts} điểm`);
       badge.textContent = me.out >= 0 ? '💀' : `${pts}đ`;
