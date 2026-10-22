@@ -2665,3 +2665,8 @@ body.spectator .quick-reactions-bar { display: none; }
 .race-lane.offline { opacity: 0.6; }
 .q-pallet-btn.skipped { opacity: 0.35; }
 body.live-mode.eliminated .palette-grid .q-pallet-btn { pointer-events: auto; }
+
+@media (max-width: 600px) {
+  .live-bar-top { flex-wrap: wrap; row-gap: 4px; }
+  .live-bar-top .live-msg { order: 3; flex: 1 1 100%; text-align: left; }
+}
