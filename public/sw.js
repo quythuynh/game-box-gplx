@@ -1,6 +1,6 @@
 // Service worker: cài app lên màn hình, mở được khi mất mạng (ôn tập, solo, tra cứu).
 // Mã nguồn (html/js/css) lấy mạng trước để luôn là bản mới; dữ liệu câu hỏi và hình ảnh lấy cache trước.
-const CACHE = 'gplx-v1';
+const CACHE = 'gplx-v2';
 const CORE = ['./', './index.html', './style.css', './game.js', './live.js', './study.js', './realtime.js',
   './config.js', './manifest.webmanifest', './data/questions_600_bca.json'];
 

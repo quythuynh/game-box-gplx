@@ -2638,3 +2638,30 @@ body.spectator .quick-reactions-bar { display: none; }
   .live-bar.urgent { animation: none; }
   .countdown-num.pop, .toast { animation: none; }
 }
+
+/* ---- Sinh tồn: lớp phủ, theo dõi người sống, danh sách câu ---- */
+.live-flash {
+  position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center;
+  background: rgba(2, 6, 23, 0.72); backdrop-filter: blur(3px); animation: lfIn 0.25s ease-out;
+}
+.live-flash .lf-card {
+  max-width: min(440px, 90vw); text-align: center; padding: 26px 24px; border-radius: 18px;
+  background: var(--bg-card); border: 1px solid var(--border-color); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+.live-flash.out .lf-card { border-color: #ef4444; }
+.live-flash.win .lf-card { border-color: #fbbf24; }
+.live-flash .lf-icon { font-size: 3.4rem; line-height: 1; margin-bottom: 8px; }
+.live-flash .lf-text { font-size: 1.15rem; font-weight: 800; color: var(--text-main); }
+.live-flash .lf-alive { margin-top: 12px; font-size: 0.9rem; color: var(--text-muted); }
+.live-flash .lf-hint { margin-top: 10px; font-size: 0.8rem; color: var(--text-muted); }
+@keyframes lfIn { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
+
+.live-watch {
+  margin-top: 8px; padding: 6px 10px; border-radius: 8px; font-size: 0.78rem; line-height: 1.6;
+  background: rgba(139, 92, 246, 0.12); border: 1px dashed rgba(139, 92, 246, 0.5); color: var(--text-main);
+}
+.live-watch .lw-p { display: inline-block; margin-right: 10px; white-space: nowrap; }
+
+.race-lane.offline { opacity: 0.6; }
+.q-pallet-btn.skipped { opacity: 0.35; }
+body.live-mode.eliminated .palette-grid .q-pallet-btn { pointer-events: auto; }

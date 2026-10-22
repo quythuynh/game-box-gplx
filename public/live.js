@@ -22,17 +22,19 @@ const Live = (() => {
     signs: '🖼️ Sa hình & Biển báo',
     live: '⚡ Đua tốc độ đồng bộ',
     survival: '💀 Sinh tồn: sai 1 câu là bị loại',
+    survival2: '💀💀 Sinh tồn 2 mạng',
     team: '🤝 Đồng đội: 2 đội đua điểm'
   };
   const MODE_RULES = {
     standard: '30 câu, mỗi người tự làm. Cần từ 27 câu đúng trở lên và không sai câu điểm liệt để đạt.',
     live: 'Cả phòng cùng làm 1 câu, 15 câu × 15 giây. Đúng càng nhanh càng nhiều điểm, đúng liên tiếp được thưởng thêm.',
-    survival: 'Cùng 1 câu, 12 giây mỗi câu. Sai hoặc hết giờ là bị loại, người cuối cùng còn sống sẽ thắng.',
+    survival: 'Cùng 1 câu, thời gian giảm dần 12 → 10 → 8 giây. Sai hoặc hết giờ là bị loại, người cuối cùng còn sống sẽ thắng.',
+    survival2: 'Như Sinh tồn nhưng có 2 mạng ❤️❤️: sai hoặc hết giờ mất 1 mạng, hết mạng mới bị loại. Thời gian giảm dần 12 → 10 → 8 giây.',
     team: 'Tự chia 2 đội 🔵 🔴. Điểm của từng người cộng dồn cho đội, đội nhiều điểm hơn sẽ thắng.',
     critical: '30 câu chọn từ các câu điểm liệt. Sai một câu là rớt.',
     signs: '30 câu sa hình và biển báo (chương 5, 6).'
   };
-  const SYNC_MODES = ['live', 'survival', 'team'];
+  const SYNC_MODES = ['live', 'survival', 'survival2', 'team'];
   const TEAMS = [
     { name: 'Đội Xanh', dot: '🔵', color: '#3b82f6' },
     { name: 'Đội Đỏ', dot: '🔴', color: '#ef4444' }
@@ -59,11 +61,14 @@ const Live = (() => {
 
   const sync = {
     teams: {},
-    active: false, total: 15, T: 15, R: 5, epoch: 0, q: -1, phase: '', timer: null,
+    active: false, total: 15, T: 15, R: 5, epoch: 0, q: -1, phase: '', timer: null, ticks: 0,
     locked: false, msg: '', lastSec: -1,
     mine: { total: 0, gain: 0, streak: 0, done: -1, out: -1 },
-    pts: {}, ans: {}
+    pts: {}, ans: {}, picks: {}, ending: false
   };
+  let endTimer = null;
+  const offlineWarned = {};
+  let lastRankings = [];
 
   // Mỗi người chơi (mỗi tab) có khóa lưu ván riêng để các tab cùng trình duyệt không khôi phục nhầm của nhau
   const gameKey = () => `${GAME_KEY}:${state.myId}`;
@@ -391,10 +396,17 @@ const Live = (() => {
       case 'pts':
         sync.pts[m.from] = {
           total: Number(m.total) || 0, gain: Number(m.gain) || 0, streak: Number(m.streak) || 0,
-          out: Number.isInteger(m.out) ? m.out : -1
+          out: Number.isInteger(m.out) ? m.out : -1,
+          lives: Number.isInteger(m.lives) ? m.lives : 1
         };
-        if (isSurvival() && sync.pts[m.from].out >= 0 && p) toast(`💀 ${p.name} bị loại ở câu ${sync.pts[m.from].out + 1}!`, 'down');
+        if (isSurvival() && sync.pts[m.from].out >= 0 && p && !sync.pts[m.from].told) {
+          sync.pts[m.from].told = true;
+          toast(`💀 ${p.name} bị loại ở câu ${sync.pts[m.from].out + 1}!`, 'down');
+        }
         updateRace();
+        break;
+      case 'pick':
+        (sync.picks[m.from] = sync.picks[m.from] || {})[Number(m.q)] = Number(m.opt);
         break;
       case 'hb':
         break;
@@ -529,7 +541,8 @@ const Live = (() => {
         key = (isSurvival() ? (out < 0 ? 1e7 : (out + 1) * 1e5) : 0) + pts;
         pct = Math.min(100, (pts / (sync.total * 900)) * 100);
         const g = sync.phase === 'reveal' ? (p.id === state.myId ? sync.mine.gain : (sync.pts[p.id]?.gain || 0)) : 0;
-        text = out >= 0 ? `💀 câu ${out + 1}` : `${pts} đ${g > 0 ? ` (+${g})` : ''}`;
+        const lv = isSurvival() && maxLives() > 1 && out < 0 ? hearts(p.id === state.myId ? (sync.mine.lives ?? maxLives()) : (sync.pts[p.id]?.lives ?? maxLives())) + ' ' : '';
+        text = out >= 0 ? `💀 câu ${out + 1}` : `${lv}${pts} đ${g > 0 ? ` (+${g})` : ''}`;
       } else if (p.submitted) {
         key = 1000 + (p.score || 0);
         pct = 100;
@@ -568,7 +581,19 @@ const Live = (() => {
       lane.title = r.p.id === state.myId ? '' : `Bấm để chọc ${r.p.name} 👉`;
       lane.querySelector('.rl-rank').textContent = MEDALS[idx] || String(idx + 1);
       const teamTag = live && isTeam() ? `${TEAMS[teamOf(r.p.id)].dot} ` : '';
-      lane.querySelector('.rl-name').textContent = `${dot(r.p.id)} ${teamTag}${r.p.name}${r.p.id === state.myId ? ' (Bạn)' : ''}`;
+      const conn = dot(r.p.id);
+      const offline = live && conn !== '🟢' && r.p.id !== state.myId && out < 0;
+      lane.classList.toggle('offline', offline);
+      lane.querySelector('.rl-name').textContent = `${offline ? '⚠️' : conn} ${teamTag}${r.p.name}${r.p.id === state.myId ? ' (Bạn)' : ''}`;
+      if (offline) {
+        lane.title = `${r.p.name} đang mất kết nối — sẽ bị loại khỏi phòng nếu không quay lại`;
+        if (!offlineWarned[r.p.id] && now - gameStartAt > 5000) {
+          offlineWarned[r.p.id] = true;
+          toast(`⚠️ ${r.p.name} đang mất kết nối…`, 'warn', 2600);
+        }
+      } else if (conn === '🟢') {
+        offlineWarned[r.p.id] = false;
+      }
       const fill = lane.querySelector('.rl-fill');
       fill.style.width = `${r.pct}%`;
       fill.style.background = live && isTeam() ? TEAMS[teamOf(r.p.id)].color : r.p.color;
@@ -631,7 +656,21 @@ const Live = (() => {
   // ---------- Chế độ Đồng bộ / Sinh tồn / Đồng đội ----------
   function isSyncMode(mode) { return SYNC_MODES.includes(mode); }
   function isLive() { return isSyncMode(state.gameMode) && !state.isSolo; }
-  function isSurvival() { return state.gameMode === 'survival'; }
+  function isSurvival() { return state.gameMode === 'survival' || state.gameMode === 'survival2'; }
+  function maxLives() { return state.gameMode === 'survival2' ? 2 : 1; }
+  function newMine() { return { total: 0, gain: 0, streak: 0, done: -1, out: -1, lives: maxLives(), res: {} }; }
+  // Sinh tồn: thời gian mỗi câu giảm dần cho khó dần; các chế độ khác giữ nguyên
+  function qDur(q) {
+    if (!isSurvival()) return sync.T;
+    return q < 7 ? 12 : (q < 14 ? 10 : 8);
+  }
+  function qStart(q) {
+    let t = 0;
+    for (let k = 0; k < q; k++) t += qDur(k) + sync.R;
+    return t;
+  }
+  function aliveList() { return Object.values(state.players).filter(p => outOf(p.id) < 0); }
+  function hearts(n) { return n > 0 ? '❤️'.repeat(n) : '💔'; }
   function isTeam() { return state.gameMode === 'team'; }
   function questionCount() { return document.body.classList.contains('live-game') ? sync.total : 30; }
   function isEliminated() { return isSurvival() && sync.mine.out >= 0; }
@@ -641,6 +680,11 @@ const Live = (() => {
     sync.active = false;
     sync.pts = {};
     sync.ans = {};
+    sync.picks = {};
+    sync.ending = false;
+    clearTimeout(endTimer);
+    document.body.classList.remove('eliminated');
+    removeFlash();
     sync.q = -1;
     sync.phase = '';
     sync.locked = false;
@@ -663,16 +707,18 @@ const Live = (() => {
       return false;
     }
     sync.total = isSurvival() ? 20 : 15;
-    sync.T = isSurvival() ? 12 : 15;
+    sync.T = 15;
     document.body.dataset.liveTotal = String(sync.total);
     const palTitle = document.querySelector('.palette-title');
     if (palTitle) palTitle.textContent = `Danh sách ${sync.total} câu`;
     if (!resumed) {
-      sync.mine = { total: 0, gain: 0, streak: 0, done: -1, out: -1 };
+      sync.mine = newMine();
       assignTeams();
     } else if (!Object.keys(sync.teams).length) {
       assignTeams();
     }
+    if (sync.mine.lives === undefined) sync.mine.lives = maxLives();
+    if (!sync.mine.res) sync.mine.res = {};
     if (isTeam()) {
       const t = TEAMS[teamOf(state.myId)];
       toast(`${t.dot} Bạn thuộc ${t.name}! Điểm cả đội được cộng dồn`, 'ok', 4500);
@@ -686,6 +732,20 @@ const Live = (() => {
   }
 
   // Sinh tồn: kết thúc sớm khi chỉ còn tối đa 1 người sống
+  // Màu nút danh sách câu trong ván đồng bộ: đúng / sai / chưa tới (sau khi bị loại)
+  function paletteRes(i) {
+    if (!isLive()) return '';
+    const m = sync.mine;
+    if (m.res && m.res[i]) return m.res[i];
+    if (isSurvival() && m.out >= 0 && i > m.out) return 'skip';
+    return '';
+  }
+
+  // Số câu mình thực sự được chơi (sinh tồn: tới câu bị loại)
+  function seenCount() {
+    return isSurvival() && sync.mine.out >= 0 ? sync.mine.out + 1 : sync.total;
+  }
+
   function survivalOver() {
     if (!isSurvival()) return false;
     const list = Object.values(state.players);
@@ -709,7 +769,7 @@ const Live = (() => {
     keepAwake(true);
     if (isLive()) {
       sync.total = isSurvival() ? 20 : 15;
-      sync.T = isSurvival() ? 12 : 15;
+      sync.T = 15;
       assignTeams();
     }
     const bar = $('liveBar');
@@ -717,19 +777,23 @@ const Live = (() => {
   }
 
   function tick() {
-    if (!sync.active) return;
-    const cycle = sync.T + sync.R;
+    if (!sync.active || sync.ending) return;
     const el = (Date.now() - sync.epoch) / 1000;
-    const q = Math.floor(el / cycle);
+    let q = 0;
+    let base = 0;
+    while (q < sync.total && el >= base + qDur(q) + sync.R) { base += qDur(q) + sync.R; q++; }
     // Tab bị trình duyệt làm chậm có thể bỏ lỡ pha công bố: tính bù các câu đã qua
     for (let k = sync.mine.done + 1; k < Math.min(q, sync.total); k++) onReveal(k);
+    if (q >= sync.total) { finishSync(); return; }
     // Kiểm tra mỗi nhịp (không chỉ lúc chuyển câu) để kết thúc ngay khi biết chỉ còn ≤1 người sống
-    if (q >= sync.total || (sync.mine.done >= 0 && survivalOver())) { finishSync(); return; }
-    const within = el - q * cycle;
-    const phase = within < sync.T ? 'answer' : 'reveal';
-    const left = phase === 'answer' ? sync.T - within : cycle - within;
+    if (sync.mine.done >= 0 && survivalOver()) { endSoon(); return; }
+    const T = qDur(q);
+    const within = el - base;
+    const phase = within < T ? 'answer' : 'reveal';
+    const left = phase === 'answer' ? T - within : T + sync.R - within;
 
     if (q !== sync.q || phase !== sync.phase) {
+      const newQ = q !== sync.q;
       sync.q = q;
       sync.phase = phase;
       state.liveQ = q;
@@ -737,15 +801,61 @@ const Live = (() => {
         sync.locked = state.myAnswers[q] !== undefined || isEliminated();
         sync.msg = '';
         SoundEngine.playNav();
+        if (newQ && q > 0 && qDur(q) < qDur(q - 1)) toast(`⏱️ Tăng tốc! Từ giờ chỉ còn ${qDur(q)} giây mỗi câu`, 'warn', 2600);
       } else {
         onReveal(q);
       }
       renderQuestion(q);
       updatePaletteGrid();
+      if (newQ) centerPalette(q);
       updateRace();
       saveGame();
     }
+    if (++sync.ticks % 20 === 0) updateRace();
     paintBar(q, phase, left);
+  }
+
+  // Giữ nút câu hiện tại ở giữa dải danh sách câu (nhất là khi cuộn ngang trên điện thoại)
+  function centerPalette(q) {
+    const grid = $('paletteGrid');
+    const btn = $(`palletBtn-${q}`);
+    if (!grid || !btn) return;
+    try {
+      grid.scrollTo({
+        left: btn.offsetLeft - (grid.clientWidth - btn.offsetWidth) / 2,
+        top: btn.offsetTop - (grid.clientHeight - btn.offsetHeight) / 2,
+        behavior: 'smooth'
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  // Báo "chốt ván" ngắn rồi mới kết thúc để người chơi hiểu vì sao ván dừng
+  function endSoon() {
+    if (sync.ending) return;
+    sync.ending = true;
+    const alive = aliveList();
+    const last = alive[0];
+    if (!alive.length) flash('💀', 'Cả phòng đã bị loại — kết thúc ván!', 'end', 1800);
+    else if (last && last.id === state.myId) flash('👑', 'Bạn là người sống sót cuối cùng — chốt ván!', 'win', 1800);
+    else flash('🏆', `${last ? last.name : 'Một người'} là người sống sót cuối cùng — chốt ván!`, 'end', 1800);
+    clearTimeout(endTimer);
+    endTimer = setTimeout(finishSync, 1800);
+  }
+
+  // Lớp phủ thông báo toàn màn hình, tự biến mất
+  function removeFlash() {
+    const old = document.getElementById('liveFlash');
+    if (old) old.remove();
+  }
+  function flash(icon, text, cls, ms, extraHtml) {
+    removeFlash();
+    const el = document.createElement('div');
+    el.id = 'liveFlash';
+    el.className = `live-flash ${cls || ''}`;
+    el.innerHTML = `<div class="lf-card"><div class="lf-icon">${icon}</div><div class="lf-text">${esc(text)}</div>${extraHtml || ''}</div>`;
+    el.addEventListener('click', removeFlash);
+    document.body.appendChild(el);
+    setTimeout(() => { if (el.isConnected) el.remove(); }, ms || 2000);
   }
 
   function onReveal(q) {
@@ -760,20 +870,33 @@ const Live = (() => {
       if (a && a.ok) {
         gain = a.base + Math.min(mine.streak, 4) * 50;
         mine.streak++;
+        if (!wasOut) mine.res[q] = 'ok';
       } else {
         mine.streak = 0;
-        if (isSurvival() && !wasOut) mine.out = q;
+        if (isSurvival() && !wasOut) {
+          mine.lives = Math.max(0, (mine.lives ?? maxLives()) - 1);
+          if (mine.lives <= 0) mine.out = q;
+        }
+        if (!wasOut) mine.res[q] = 'bad';
       }
       mine.total += gain;
       mine.gain = gain;
       mine.done = q;
     }
+    const justOut = isSurvival() && !wasOut && mine.out === q;
+    const lostLife = isSurvival() && !wasOut && !justOut && mine.res[q] === 'bad';
     const ok = picked !== undefined && picked === question.correct_option;
     if (wasOut) sync.msg = '💀 Bạn đã bị loại — tiếp tục theo dõi các đối thủ';
-    else if (picked === undefined) sync.msg = isSurvival() ? '⏰ Hết giờ — bạn bị loại! 💀' : '⏰ Hết giờ — +0 điểm';
-    else if (ok) sync.msg = `✅ Chính xác! +${mine.gain} điểm${mine.streak > 1 ? ` · 🔥 chuỗi ${mine.streak}` : ''}`;
-    else sync.msg = isSurvival() ? '❌ Sai rồi — bạn bị loại! 💀' : '❌ Chưa đúng — +0 điểm';
-    send('pts', { q, total: mine.total, gain: mine.gain, streak: mine.streak, out: mine.out });
+    else if (picked === undefined) {
+      sync.msg = !isSurvival() ? '⏰ Hết giờ — +0 điểm'
+        : (justOut ? '⏰ Hết giờ — bạn bị loại! 💀' : `⏰ Hết giờ — mất 1 mạng, còn ${hearts(mine.lives)}`);
+    } else if (ok) sync.msg = `✅ Chính xác! +${mine.gain} điểm${mine.streak > 1 ? ` · 🔥 chuỗi ${mine.streak}` : ''}`;
+    else {
+      sync.msg = !isSurvival() ? '❌ Chưa đúng — +0 điểm'
+        : (justOut ? '❌ Sai rồi — bạn bị loại! 💀' : `❌ Sai rồi — mất 1 mạng, còn ${hearts(mine.lives)}`);
+    }
+    send('pts', { q, total: mine.total, gain: mine.gain, streak: mine.streak, out: mine.out, lives: mine.lives });
+    if (justOut) onEliminated(q);
     if (ok) {
       spawnFloatingEmoji(`+${mine.gain}${mine.streak >= 3 ? ' 🔥' : ''}`, 0.5, 0.3);
       buzz(40);
@@ -790,14 +913,32 @@ const Live = (() => {
         pane.classList.add('shake-screen');
       }
     }
+    if (lostLife) toast(`💔 Mất 1 mạng! Còn ${hearts(mine.lives)}`, 'down', 2200);
+  }
+
+  // Vừa bị loại: báo rõ ràng, liệt kê người còn sống, rồi chuyển sang chế độ theo dõi
+  function onEliminated(q) {
+    document.body.classList.add('eliminated');
+    const alive = aliveList().filter(p => p.id !== state.myId);
+    const list = alive.length
+      ? `<div class="lf-alive">Còn sống: ${alive.map(p => `${esc(p.avatar)} ${esc(p.name)}`).join(' · ')}</div>`
+      : '';
+    flash('💀', `Bạn bị loại ở câu ${q + 1}!`, 'out', 2600,
+      `${list}<div class="lf-hint">Bạn vẫn xem được đáp án, giải thích và người còn sống chọn gì. Bấm vào số câu để xem lại.</div>`);
   }
 
   function paintBar(q, phase, left) {
     const bar = $('liveBar');
     if (!bar) return;
     bar.classList.toggle('reveal', phase === 'reveal');
-    $('liveQNum').textContent = `${isSurvival() ? '💀' : '⚡'} Câu ${q + 1}/${sync.total}`;
-    const span = phase === 'answer' ? sync.T : sync.R;
+    let head = `${isSurvival() ? '💀' : '⚡'} Câu ${q + 1}/${sync.total}`;
+    if (isSurvival()) {
+      const n = Object.keys(state.players).length;
+      head += ` · 👥 ${aliveList().length}/${n} còn sống`;
+      if (maxLives() > 1) head += ` · ${hearts(sync.mine.lives ?? maxLives())}`;
+    }
+    $('liveQNum').textContent = head;
+    const span = phase === 'answer' ? qDur(q) : sync.R;
     $('liveFill').style.width = `${Math.max(0, (left / span) * 100)}%`;
     const sec = Math.ceil(left);
     $('liveTime').textContent = `${sec}s`;
@@ -805,17 +946,40 @@ const Live = (() => {
     bar.classList.toggle('urgent', phase === 'answer' && sec <= 5);
     if (phase === 'answer') {
       // đếm số người đã khóa đáp án câu này (người đã bị loại không tính)
-      const alive = Object.values(state.players).filter(p => !(isSurvival() && outOf(p.id) >= 0));
+      const alive = aliveList();
       const done = alive.filter(p => (p.id === state.myId ? state.myAnswers[q] !== undefined : p.answers?.[q] !== undefined)).length;
       const count = alive.length > 1 ? ` · ${done}/${alive.length} người đã chọn` : '';
       $('liveMsg').textContent = isEliminated()
         ? `💀 Bạn đã bị loại — đang theo dõi${count}`
-        : (sync.locked ? `🔒 Đã khóa đáp án${count}` : (isSurvival() ? `Sai 1 câu là bị loại — cẩn thận! 💀${count}` : `Chọn nhanh để được nhiều điểm hơn ⚡${count}`));
+        : (sync.locked ? `🔒 Đã khóa đáp án${count}` : (isSurvival() ? `${maxLives() > 1 ? 'Sai là mất mạng' : 'Sai 1 câu là bị loại'} — cẩn thận! 💀${count}` : `Chọn nhanh để được nhiều điểm hơn ⚡${count}`));
     } else {
       $('liveMsg').textContent = `${sync.msg}  ·  Câu tiếp theo sau ${sec}s`;
     }
+    paintWatch(q, phase);
     if (phase === 'answer' && sec <= 5 && sec !== sync.lastSec && !sync.locked) SoundEngine.playTick();
     sync.lastSec = sec;
+  }
+
+  // Người đã bị loại: xem những người còn sống đang chọn đáp án nào
+  function paintWatch(q, phase) {
+    const box = $('liveWatch');
+    if (!box) return;
+    if (!isLive() || !isSurvival() || !isEliminated()) { box.style.display = 'none'; return; }
+    const question = state.exam30[q];
+    const rows = aliveList().filter(p => p.id !== state.myId).map(p => {
+      const opt = sync.picks[p.id]?.[q];
+      let tag;
+      if (opt === undefined) tag = phase === 'answer' ? '<i>đang nghĩ…</i>' : '<i>không chọn</i>';
+      else {
+        const letter = 'ABCD'[opt - 1] || opt;
+        tag = phase === 'reveal' ? (opt === question.correct_option ? `✅ ${letter}` : `❌ ${letter}`) : `🔒 ${letter}`;
+      }
+      return `<span class="lw-p">${esc(p.avatar)} ${esc(p.name)}: ${tag}</span>`;
+    });
+    box.style.display = 'block';
+    box.innerHTML = rows.length
+      ? `<b>👀 Người còn sống:</b> ${rows.join(' ')}`
+      : '<b>👀 Không còn ai sống</b>';
   }
 
   function canAnswer(qIndex) {
@@ -826,19 +990,23 @@ const Live = (() => {
   function onAnswered(qIndex, optionIndex) {
     if (!sync.active) return;
     const q = state.exam30[qIndex];
-    const within = (Date.now() - sync.epoch) / 1000 - qIndex * (sync.T + sync.R);
-    const remaining = Math.max(0, sync.T - within);
+    const within = (Date.now() - sync.epoch) / 1000 - qStart(qIndex);
+    const remaining = Math.max(0, qDur(qIndex) - within);
     const ok = optionIndex === q.correct_option;
-    sync.ans[qIndex] = { ok, base: ok ? Math.round(600 + 400 * remaining / sync.T) : 0 };
+    sync.ans[qIndex] = { ok, base: ok ? Math.round(600 + 400 * remaining / qDur(qIndex)) : 0 };
     sync.locked = true;
+    send('pick', { q: qIndex, opt: optionIndex });
     saveGame();
   }
 
   function blockNav(index) {
+    // Người đã bị loại được xem lại các câu đã qua (chỉ đọc)
+    if (isEliminated() && index <= sync.mine.done) return false;
     return sync.active && !state.isReviewMode && index !== state.liveQ;
   }
 
   function revealNow(index) {
+    if (sync.active && isEliminated() && index <= sync.mine.done) return true;
     return sync.active && sync.phase === 'reveal' && index === sync.q;
   }
 
@@ -850,11 +1018,17 @@ const Live = (() => {
 
   function stopSync() {
     clearInterval(sync.timer);
+    clearTimeout(endTimer);
     sync.active = false;
+    sync.ending = false;
+    document.body.classList.remove('eliminated');
+    const w = $('liveWatch');
+    if (w) w.style.display = 'none';
   }
 
   function finishSync() {
     stopSync();
+    removeFlash();
     document.body.classList.remove('live-mode');
     const bar = $('liveBar');
     if (bar) bar.style.display = 'none';
@@ -876,6 +1050,7 @@ const Live = (() => {
   }
 
   function decorateResult(rankings) {
+    lastRankings = rankings;
     keepAwake(false);
     document.body.classList.remove('live-mode');
     const bar = $('liveBar');
@@ -931,17 +1106,93 @@ const Live = (() => {
   }
 
   // ---------- Chia sẻ kết quả ----------
+  function wrapText(ctx, text, maxW) {
+    const words = text.split(' ');
+    const lines = [];
+    let cur = '';
+    words.forEach(w => {
+      const t = cur ? `${cur} ${w}` : w;
+      if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t;
+    });
+    if (cur) lines.push(cur);
+    return lines;
+  }
+
+  // Ảnh tóm tắt kết quả (xếp hạng, câu bị loại) để khoe bạn bè
+  function buildShareImage() {
+    const W = 1080;
+    const rows = (lastRankings || []).slice(0, 8);
+    const H = 640 + rows.length * 96;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, '#0f172a'); g.addColorStop(1, '#1e1b4b');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#38bdf8'; ctx.font = '700 34px system-ui, sans-serif';
+    ctx.fillText('ĐẤU TRƯỜNG LÝ THUYẾT GPLX', W / 2, 90);
+    ctx.fillStyle = '#94a3b8'; ctx.font = '600 30px system-ui, sans-serif';
+    ctx.fillText(modeLabel(state.gameMode), W / 2, 140);
+    ctx.fillStyle = '#f8fafc'; ctx.font = '800 56px system-ui, sans-serif';
+    const title = $('grbTitle').textContent.trim();
+    const lines = wrapText(ctx, title, W - 160).slice(0, 3);
+    lines.forEach((l, i) => ctx.fillText(l, W / 2, 250 + i * 72));
+    ctx.fillStyle = '#cbd5e1'; ctx.font = '500 30px system-ui, sans-serif';
+    const sub = wrapText(ctx, $('grbSub').textContent.trim().split('. Bấm')[0], W - 160).slice(0, 2);
+    sub.forEach((l, i) => ctx.fillText(l, W / 2, 250 + lines.length * 72 + 20 + i * 42));
+    let y = 250 + lines.length * 72 + sub.length * 42 + 50;
+    rows.forEach((r, i) => {
+      const me = r.id === state.myId;
+      ctx.fillStyle = me ? 'rgba(56,189,248,0.22)' : 'rgba(255,255,255,0.06)';
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(60, y, W - 120, 80, 18) : ctx.rect(60, y, W - 120, 80);
+      ctx.fill();
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#f8fafc'; ctx.font = '700 38px system-ui, sans-serif';
+      ctx.fillText(`${MEDALS[i] || i + 1}  ${r.avatar || ''} ${String(r.name || '').slice(0, 14)}${me ? ' (Bạn)' : ''}`, 90, y + 54);
+      ctx.textAlign = 'right';
+      const out = r.out ?? -1;
+      ctx.fillStyle = out >= 0 ? '#f87171' : '#34d399';
+      const right = isLive() ? (out >= 0 ? `💀 câu ${out + 1}` : `${r.livePts ?? 0} đ`) : `${r.score ?? 0}/30`;
+      ctx.fillText(right, W - 90, y + 54);
+      y += 96;
+    });
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#64748b'; ctx.font = '500 28px system-ui, sans-serif';
+    ctx.fillText(`${location.host}${location.pathname}`, W / 2, H - 50);
+    return c;
+  }
+
   function shareResult() {
     const title = $('grbTitle').textContent.trim();
     const sub = $('grbSub').textContent.trim();
     const text = `${title}\n${sub}\nChơi cùng mình: ${location.origin}${location.pathname}`;
-    if (navigator.share) {
-      navigator.share({ title: 'Đấu Trường Lý Thuyết GPLX', text }).catch(() => {});
-      return;
-    }
-    const done = () => toast('📋 Đã sao chép kết quả, dán vào chat để khoe bạn bè!', 'ok', 3000);
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(() => toast('Không sao chép được', 'warn'));
-    else toast('Trình duyệt không hỗ trợ sao chép', 'warn');
+    const fallbackText = () => {
+      if (navigator.share) {
+        navigator.share({ title: 'Đấu Trường Lý Thuyết GPLX', text }).catch(() => {});
+        return;
+      }
+      const done = () => toast('📋 Đã sao chép kết quả, dán vào chat để khoe bạn bè!', 'ok', 3000);
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(() => toast('Không sao chép được', 'warn'));
+      else toast('Trình duyệt không hỗ trợ sao chép', 'warn');
+    };
+    let canvas;
+    try { canvas = buildShareImage(); } catch (e) { fallbackText(); return; }
+    canvas.toBlob(blob => {
+      if (!blob) { fallbackText(); return; }
+      const file = new File([blob], 'ket-qua-gplx.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: 'Đấu Trường Lý Thuyết GPLX', text }).catch(() => {});
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'ket-qua-gplx.png';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast('🖼️ Đã tải ảnh kết quả về máy', 'ok', 2600);
+    }, 'image/png');
   }
 
   // ---------- Đề nghị đấu lại ----------
@@ -972,7 +1223,7 @@ const Live = (() => {
     isReady, toggleReady, readyCounts, modeLabel, sendChat, renderChat,
     hostStart, hideCountdown, onRoomState, onFx, timeToast, onPeerProgress, onPeerSubmitted, onPeerLeft, onRestart,
     updateRace, isLive, isSyncMode, onSpectatorStart, modeRules, shareResult, buzz, questionCount, dot, teamBadge, voteRematch, updateRematchUi, poke, onExamStart, canAnswer, onAnswered, blockNav, revealNow, afterRender,
-    stopSync, sortRankings, decorateResult,
+    stopSync, sortRankings, decorateResult, paletteRes, seenCount,
     get total() { return sync.total; }
   };
 })();

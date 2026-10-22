@@ -1348,6 +1348,14 @@ function updatePaletteGrid() {
     const myAnswered = state.myAnswers[i] !== undefined;
     btn.classList.toggle('my-answered', myAnswered);
 
+    // Ván đồng bộ: tô xanh/đỏ theo kết quả từng câu, mờ các câu sau khi bị loại
+    if (Live.isLive()) {
+      const r = Live.paletteRes(i);
+      btn.classList.toggle('rev-correct', r === 'ok');
+      btn.classList.toggle('rev-wrong', r === 'bad');
+      btn.classList.toggle('skipped', r === 'skip');
+    }
+
     const isFlagged = state.flaggedQuestions.has(i);
     btn.classList.toggle('flagged', isFlagged);
     if (flagEl) flagEl.style.display = isFlagged ? 'block' : 'none';
@@ -1701,7 +1709,8 @@ function saveMatchResultToStorage(rankings, questions) {
   const myRecord = rankings.find(p => p.id === state.myId);
   if (!myRecord) return;
   const isLive = Live.isLive();
-  if (isLive) questions = questions.slice(0, Live.total);
+  // Sinh tồn: chỉ tính các câu đã chơi tới lúc bị loại (không đẩy câu chưa thấy vào danh sách câu sai)
+  if (isLive) questions = questions.slice(0, Live.seenCount());
 
   try {
     // 1. Lưu vào danh sách lịch sử trận đấu (ván đồng bộ chỉ có 15 câu nên không tính vào tỉ lệ đạt)
