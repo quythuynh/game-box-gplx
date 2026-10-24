@@ -362,6 +362,36 @@ function setupLobbyEvents() {
       instantChk.checked = !!prefs.instant;
     }
   } catch (e) { /* ignore */ }
+  // Tuỳ chọn riêng của chế độ Sinh tồn (loại câu, số mạng, tốc độ)
+  const survBox = document.getElementById('survivalOpts');
+  const survKind = document.getElementById('survKind');
+  const survLives = document.getElementById('survLives');
+  const survSpeed = document.getElementById('survSpeed');
+  const survCount = document.getElementById('survCount');
+  const survRegen = document.getElementById('survRegen');
+  try {
+    const sp = JSON.parse(localStorage.getItem('gplx_surv_prefs') || 'null');
+    if (sp) {
+      if ([...survKind.options].some(o => o.value === sp.k)) survKind.value = sp.k;
+      if ([...survLives.options].some(o => o.value === sp.l)) survLives.value = sp.l;
+      if ([...survSpeed.options].some(o => o.value === sp.s)) survSpeed.value = sp.s;
+      if ([...survCount.options].some(o => o.value === sp.c)) survCount.value = sp.c;
+      survRegen.checked = !!sp.g;
+    }
+  } catch (e) { /* ignore */ }
+  const syncSurvBox = () => { survBox.style.display = /^survival/.test(modeSel.value) ? 'block' : 'none'; };
+  modeSel.addEventListener('change', () => {
+    // Đổi chế độ thì đặt số mạng mặc định theo chế độ (1 mạng / 2 mạng)
+    if (modeSel.value === 'survival') survLives.value = '1';
+    else if (modeSel.value === 'survival2') survLives.value = '2';
+    syncSurvBox();
+  });
+  syncSurvBox();
+  [survKind, survLives, survSpeed, survCount, survRegen].forEach(el => el.addEventListener('change', () => {
+    try {
+      localStorage.setItem('gplx_surv_prefs', JSON.stringify({ k: survKind.value, l: survLives.value, s: survSpeed.value, c: survCount.value, g: survRegen.checked }));
+    } catch (e) { /* ignore */ }
+  }));
   [modeSel, timeSel, instantChk].forEach(el => el.addEventListener('change', () => {
     try {
       localStorage.setItem('gplx_lobby_prefs', JSON.stringify({ mode: modeSel.value, time: timeSel.value, instant: instantChk.checked }));
@@ -432,7 +462,16 @@ function setupLobbyEvents() {
   // Bấm Tạo Phòng
   document.getElementById('btnCreateRoom').addEventListener('click', () => {
     const { name, avatar } = getMyProfile();
-    const mode = document.getElementById('gameModeSelect').value;
+    let mode = document.getElementById('gameModeSelect').value;
+    if (/^survival/.test(mode)) {
+      mode = Live.buildMode(mode, {
+        k: document.getElementById('survKind').value,
+        l: document.getElementById('survLives').value,
+        s: document.getElementById('survSpeed').value,
+        c: document.getElementById('survCount').value,
+        g: document.getElementById('survRegen').checked ? '1' : ''
+      });
+    }
     const timeLimit = parseInt(document.getElementById('gameTimeSelect').value, 10);
 
     const btn = document.getElementById('btnCreateRoom');

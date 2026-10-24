@@ -27,10 +27,45 @@ function generateRoomCode() {
 }
 
 function sample(arr, n) {
-  return [...arr].sort(() => 0.5 - Math.random()).slice(0, n);
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a.slice(0, n);
 }
 
-function generate30Questions(mode = 'standard') {
+// Chế độ có tuỳ chọn: "survival~k=img;l=3;s=fast" (k: all|img|text|mix, l: số mạng, s: tốc độ)
+function parseMode(mode) {
+  const [base, rest = ''] = String(mode || 'standard').split('~');
+  const opts = {};
+  rest.split(';').forEach(kv => { const [key, v] = kv.split('='); if (key && v) opts[key] = v; });
+  return { base, opts };
+}
+
+// Sinh tồn: bốc ngẫu nhiên, giữ thứ tự bốc (không sắp theo id).
+// Chỉ bỏ câu trùng cả đề lẫn ảnh (câu "như hình dưới đây" khác ảnh vẫn là câu khác).
+function randomMix(n, kind = 'all') {
+  const seen = new Set();
+  const uniq = sample(questionsData, questionsData.length).filter(q => {
+    const key = q.question + '|' + (q.image || '');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const img = uniq.filter(q => q.image);
+  const txt = uniq.filter(q => !q.image);
+  if (kind === 'signs') return uniq.filter(q => q.chapter === 5 || q.chapter === 6).slice(0, n);
+  if (kind === 'law') return uniq.filter(q => q.chapter <= 4).slice(0, n);
+  if (kind === 'img') return img.slice(0, n);
+  if (kind === 'text') return txt.slice(0, n);
+  if (kind === 'mix') return sample([...img.slice(0, Math.round(n * 0.7)), ...txt.slice(0, n - Math.round(n * 0.7))], n);
+  return uniq.slice(0, n);
+}
+
+function generate30Questions(rawMode = 'standard') {
+  const { base: mode, opts } = parseMode(rawMode);
+  if (mode === 'survival' || mode === 'survival2') return randomMix(30, opts.k);
   if (mode === 'critical') return sample(questionsData.filter(q => q.is_critical), 30);
   if (mode === 'signs') return sample(questionsData.filter(q => q.chapter === 5 || q.chapter === 6), 30);
 

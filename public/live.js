@@ -268,8 +268,50 @@ const Live = (() => {
     return { ok: list.filter(isReady).length, all: list.length };
   }
 
-  function modeLabel(mode) { return MODE_LABELS[mode] || MODE_LABELS.standard; }
-  function modeRules(mode) { return MODE_RULES[mode] || ''; }
+  // Chế độ có tuỳ chọn: "survival~k=img;l=3;s=fast" (k: loại câu, l: số mạng, s: tốc độ)
+  const SPEEDS = { slow: [15, 12, 10], normal: [12, 10, 8], fast: [8, 7, 6], flat: [12, 12, 12] };
+  const KIND_LABELS = { all: 'tất cả câu', img: 'chỉ câu hình ảnh', text: 'chỉ câu chữ', mix: '70% hình / 30% chữ', signs: 'chỉ biển báo & sa hình (chương 5, 6)', law: 'chỉ luật & kỹ thuật (chương 1–4)' };
+  const SPEED_LABELS = { slow: 'chậm', normal: 'thường', fast: 'nhanh', flat: 'cố định 12s' };
+  function parseMode(mode) {
+    const [base, rest = ''] = String(mode || 'standard').split('~');
+    const opts = {};
+    rest.split(';').forEach(kv => { const [k, v] = kv.split('='); if (k && v) opts[k] = v; });
+    return { base, opts };
+  }
+  function buildMode(base, opts) {
+    const rest = Object.entries(opts || {}).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `${k}=${v}`).join(';');
+    return rest ? `${base}~${rest}` : base;
+  }
+  function survTotal() {
+    const n = Number(parseMode(state.gameMode).opts.c);
+    return [10, 20, 30].includes(n) ? n : 20;
+  }
+  function modeLabel(mode) {
+    const { base, opts } = parseMode(mode);
+    let label = MODE_LABELS[base] || MODE_LABELS.standard;
+    if (base === 'survival' || base === 'survival2') {
+      if (opts.l) label = `💀 Sinh tồn ${opts.l} mạng`;
+      const extra = [];
+      if (opts.k && opts.k !== 'all' && KIND_LABELS[opts.k]) extra.push(KIND_LABELS[opts.k]);
+      if (opts.s && opts.s !== 'normal' && SPEED_LABELS[opts.s]) extra.push(`tốc độ ${SPEED_LABELS[opts.s]}`);
+      if (opts.c && opts.c !== '20') extra.push(`${opts.c} câu`);
+      if (opts.g === '1') extra.push('hồi mạng');
+      if (extra.length) label += ` (${extra.join(', ')})`;
+    }
+    return label;
+  }
+  function modeRules(mode) {
+    const { base, opts } = parseMode(mode);
+    if (base !== 'survival' && base !== 'survival2') return MODE_RULES[base] || '';
+    const lives = Number(opts.l) || (base === 'survival2' ? 2 : 1);
+    const [a, b, c] = SPEEDS[opts.s] || SPEEDS.normal;
+    const time = a === b && b === c ? `${a} giây mỗi câu` : `thời gian giảm dần ${a} → ${b} → ${c} giây`;
+    const kind = opts.k && opts.k !== 'all' && KIND_LABELS[opts.k] ? ` Câu hỏi: ${KIND_LABELS[opts.k]}.` : '';
+    const who = lives > 1 ? `Có ${lives} mạng ${'❤️'.repeat(lives)}: sai hoặc hết giờ mất 1 mạng, hết mạng mới bị loại.` : 'Sai hoặc hết giờ là bị loại.';
+    const regen = opts.g === '1' && lives > 1 ? ' Đúng liên tiếp 5 câu được hồi 1 mạng.' : '';
+    const n = Number(opts.c) || 20;
+    return `${n} câu, cùng 1 câu cho cả phòng, ${time}. ${who}${regen} Người cuối cùng còn sống sẽ thắng.${kind}`;
+  }
 
   function renderChat() {
     const box = $('waitingChatLog');
@@ -654,15 +696,19 @@ const Live = (() => {
   }
 
   // ---------- Chế độ Đồng bộ / Sinh tồn / Đồng đội ----------
-  function isSyncMode(mode) { return SYNC_MODES.includes(mode); }
+  function isSyncMode(mode) { return SYNC_MODES.includes(parseMode(mode).base); }
   function isLive() { return isSyncMode(state.gameMode) && !state.isSolo; }
-  function isSurvival() { return state.gameMode === 'survival' || state.gameMode === 'survival2'; }
-  function maxLives() { return state.gameMode === 'survival2' ? 2 : 1; }
+  function isSurvival() { const b = parseMode(state.gameMode).base; return b === 'survival' || b === 'survival2'; }
+  function maxLives() {
+    const { base, opts } = parseMode(state.gameMode);
+    return Math.min(3, Math.max(1, Number(opts.l) || (base === 'survival2' ? 2 : 1)));
+  }
   function newMine() { return { total: 0, gain: 0, streak: 0, done: -1, out: -1, lives: maxLives(), res: {} }; }
   // Sinh tồn: thời gian mỗi câu giảm dần cho khó dần; các chế độ khác giữ nguyên
   function qDur(q) {
     if (!isSurvival()) return sync.T;
-    return q < 7 ? 12 : (q < 14 ? 10 : 8);
+    const sp = SPEEDS[parseMode(state.gameMode).opts.s] || SPEEDS.normal;
+    return q < 7 ? sp[0] : (q < 14 ? sp[1] : sp[2]);
   }
   function qStart(q) {
     let t = 0;
@@ -671,7 +717,7 @@ const Live = (() => {
   }
   function aliveList() { return Object.values(state.players).filter(p => outOf(p.id) < 0); }
   function hearts(n) { return n > 0 ? '❤️'.repeat(n) : '💔'; }
-  function isTeam() { return state.gameMode === 'team'; }
+  function isTeam() { return parseMode(state.gameMode).base === 'team'; }
   function questionCount() { return document.body.classList.contains('live-game') ? sync.total : 30; }
   function isEliminated() { return isSurvival() && sync.mine.out >= 0; }
 
@@ -707,9 +753,13 @@ const Live = (() => {
       if (t30) t30.textContent = 'Danh sách 30 câu';
       return false;
     }
-    sync.total = isSurvival() ? 20 : 15;
+    sync.total = isSurvival() ? survTotal() : 15;
     sync.T = 15;
     document.body.dataset.liveTotal = String(sync.total);
+    // Tải trước ảnh của cả ván để không ai bị chậm vì mạng
+    if (isSurvival()) {
+      state.exam30.slice(0, sync.total).forEach(q => { if (q && q.image) { const im = new Image(); im.src = `./${q.image}`; } });
+    }
     const palTitle = document.querySelector('.palette-title');
     if (palTitle) palTitle.textContent = `Danh sách ${sync.total} câu`;
     if (!resumed) {
@@ -769,7 +819,7 @@ const Live = (() => {
     document.body.classList.add('spectator');
     keepAwake(true);
     if (isLive()) {
-      sync.total = isSurvival() ? 20 : 15;
+      sync.total = isSurvival() ? survTotal() : 15;
       sync.T = 15;
       assignTeams();
     }
@@ -872,6 +922,10 @@ const Live = (() => {
         gain = a.base + Math.min(mine.streak, 4) * 50;
         mine.streak++;
         if (!wasOut) mine.res[q] = 'ok';
+        if (isSurvival() && !wasOut && parseMode(state.gameMode).opts.g === '1' && mine.streak % 5 === 0 && (mine.lives ?? 0) < maxLives()) {
+          mine.lives++;
+          mine.regen = q;
+        }
       } else {
         mine.streak = 0;
         if (isSurvival() && !wasOut) {
@@ -914,6 +968,7 @@ const Live = (() => {
         pane.classList.add('shake-screen');
       }
     }
+    if (mine.regen === q) toast(`💚 Đúng liên tiếp 5 câu — hồi 1 mạng! ${hearts(mine.lives)}`, 'ok', 2400);
     if (lostLife) toast(`💔 Mất 1 mạng! Còn ${hearts(mine.lives)}`, 'down', 2200);
   }
 
@@ -1221,7 +1276,7 @@ const Live = (() => {
   return {
     prepareSession, beginSession, clearSession, leaveAndReload, tryRejoin,
     saveGame, restoreGame, clearGame, toast, netDown, netUp,
-    isReady, toggleReady, readyCounts, modeLabel, sendChat, renderChat,
+    isReady, toggleReady, readyCounts, modeLabel, buildMode, parseMode, sendChat, renderChat,
     hostStart, hideCountdown, onRoomState, onFx, timeToast, onPeerProgress, onPeerSubmitted, onPeerLeft, onRestart,
     updateRace, isLive, isSyncMode, onSpectatorStart, modeRules, shareResult, buzz, questionCount, dot, teamBadge, voteRematch, updateRematchUi, poke, onExamStart, canAnswer, onAnswered, blockNav, revealNow, afterRender,
     stopSync, sortRankings, decorateResult, paletteRes, seenCount,
