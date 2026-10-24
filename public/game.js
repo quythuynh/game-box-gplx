@@ -1101,20 +1101,23 @@ function updateOpponentsBar() {
     const answeredCount = isMe 
       ? Object.keys(state.myAnswers).length 
       : (p.totalAnswered ?? p.answeredList?.length ?? Object.keys(p.answers || {}).length);
-    const pct = Math.round((answeredCount / 30) * 100);
+    const total = Live.questionCount();
+    const pct = Math.round((answeredCount / total) * 100);
     const curQIndex = isMe ? state.currentQIndex : (p.currentQ ?? 0);
     const curQNum = (curQIndex ?? 0) + 1;
 
     let statusText = '';
     if (state.isReviewMode || p.submitted) {
-      if (p.score !== undefined && p.score !== null) {
+      if (Live.isLive()) {
+        statusText = `Đã xong · Đang xem: C${curQNum}`;
+      } else if (p.score !== undefined && p.score !== null) {
         const badge = p.passed ? '🎉 Đạt' : (p.failedCritical ? '⚠️ Liệt' : '❌ Rớt');
         statusText = `Điểm: ${p.score}/30 (${badge}) · Đang xem: C${curQNum}`;
       } else {
         statusText = `Đã nộp bài · Đang xem: C${curQNum}`;
       }
     } else {
-      statusText = `Đã làm: ${answeredCount}/30 câu · Đang xem: C${curQNum}`;
+      statusText = `Đã làm: ${answeredCount}/${total} câu · Đang xem: C${curQNum}`;
     }
 
     const isFollowing = state.followingPlayerId === p.id;
@@ -1345,6 +1348,7 @@ function updatePaletteGrid() {
       if (!btn) continue;
 
       const q = state.exam30[i];
+      if (!q) continue;
       const myChoice = state.myAnswers[i];
       const isCorrect = (myChoice === q.correct_option);
       const isCritical = q.is_critical;
@@ -1561,14 +1565,14 @@ function setupGameEvents() {
       state.reviewFilter = filter;
 
       if (filter === 'wrong') {
-        const firstWrong = state.exam30.findIndex((q, i) => state.myAnswers[i] !== q.correct_option);
+        const firstWrong = state.exam30.slice(0, Live.questionCount()).findIndex((q, i) => state.myAnswers[i] !== q.correct_option);
         if (firstWrong !== -1) {
           renderQuestion(firstWrong);
         } else {
           alert('Tuyệt vời! Bạn không làm sai câu nào.');
         }
       } else if (filter === 'critical') {
-        const firstCrit = state.exam30.findIndex((q) => q.is_critical);
+        const firstCrit = state.exam30.slice(0, Live.questionCount()).findIndex((q) => q.is_critical);
         if (firstCrit !== -1) renderQuestion(firstCrit);
       } else {
         renderQuestion(0);
@@ -2023,6 +2027,15 @@ function showResultScreen(rankings, questions) {
     }
   });
 
+  // Ván đồng bộ / sinh tồn chỉ chơi N câu đầu của đề 30 câu: chỉ hiển thị N câu đó
+  const total = Live.questionCount();
+  questions = questions.slice(0, total);
+  state.exam30 = questions;
+  const allBtn = document.getElementById('grbAllBtn');
+  if (allBtn) allBtn.textContent = `Tất cả (${total})`;
+  const rfAll = document.getElementById('rfAllBtn');
+  if (rfAll) rfAll.textContent = `Tất cả (${total} câu)`;
+
   const myRecord = rankings.find(p => p.id === state.myId) || {};
   const isPassed = !!myRecord.passed;
   const score = myRecord.score ?? 0;
@@ -2051,7 +2064,7 @@ function showResultScreen(rankings, questions) {
 
   const scoreBadge = document.getElementById('grbScoreBadge');
   if (scoreBadge) {
-    scoreBadge.textContent = `${score}/30`;
+    scoreBadge.textContent = `${score}/${total}`;
     scoreBadge.className = `grb-badge ${isPassed ? 'pass' : 'fail'}`;
   }
 
