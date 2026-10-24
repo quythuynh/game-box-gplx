@@ -45,7 +45,7 @@ function parseMode(mode) {
 
 // Sinh tồn: bốc ngẫu nhiên, giữ thứ tự bốc (không sắp theo id).
 // Chỉ bỏ câu trùng cả đề lẫn ảnh (câu "như hình dưới đây" khác ảnh vẫn là câu khác).
-function randomMix(n, kind = 'all') {
+function randomMix(n, kind = 'all', count = 20) {
   const seen = new Set();
   const uniq = sample(questionsData, questionsData.length).filter(q => {
     const key = q.question + '|' + (q.image || '');
@@ -59,13 +59,20 @@ function randomMix(n, kind = 'all') {
   if (kind === 'law') return uniq.filter(q => q.chapter <= 4).slice(0, n);
   if (kind === 'img') return img.slice(0, n);
   if (kind === 'text') return txt.slice(0, n);
-  if (kind === 'mix') return sample([...img.slice(0, Math.round(n * 0.7)), ...txt.slice(0, n - Math.round(n * 0.7))], n);
+  if (kind === 'mix') {
+    // Đúng 70% hình / 30% chữ trong số câu thật sự chơi (count); phần còn lại của đề lấy ngẫu nhiên
+    const play = Math.min(n, Math.max(1, count));
+    const nImg = Math.round(play * 0.7);
+    const head = sample([...img.slice(0, nImg), ...txt.slice(0, play - nImg)], play);
+    const used = new Set(head.map(q => q.id));
+    return [...head, ...uniq.filter(q => !used.has(q.id)).slice(0, n - play)];
+  }
   return uniq.slice(0, n);
 }
 
 function generate30Questions(rawMode = 'standard') {
   const { base: mode, opts } = parseMode(rawMode);
-  if (mode === 'survival' || mode === 'survival2') return randomMix(30, opts.k);
+  if (mode === 'survival' || mode === 'survival2') return randomMix(30, opts.k, Number(opts.c) || 20);
   if (mode === 'critical') return sample(questionsData.filter(q => q.is_critical), 30);
   if (mode === 'signs') return sample(questionsData.filter(q => q.chapter === 5 || q.chapter === 6), 30);
 

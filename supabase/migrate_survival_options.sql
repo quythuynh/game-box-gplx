@@ -8,7 +8,27 @@ declare
   base text := split_part(coalesce(p_mode,''), '~', 1);
   kind text := coalesce(substring(p_mode from 'k=([a-z]+)'), 'all');
   n_img int;
+  cnt int := least(30, greatest(10, coalesce(substring(p_mode from 'c=([0-9]+)')::int, 20)));
+  n_mix int;
+  res int[];
 begin
+  if base in ('survival', 'survival2') and kind = 'mix' then
+    -- Đúng 70% hình / 30% chữ trong số câu thật sự chơi (cnt); phần còn lại của đề lấy ngẫu nhiên
+    n_mix := round(cnt * 0.7);
+    with u as (
+      select distinct on (question, coalesce(image, '')) id, (image is not null) as has_img
+      from questions order by question, coalesce(image, ''), random()
+    ), h as (
+      (select id from u where has_img order by random() limit n_mix)
+      union all
+      (select id from u where not has_img order by random() limit cnt - n_mix)
+    ), t as (
+      select id from u where id not in (select id from h) order by random() limit 30 - cnt
+    )
+    select (select array_agg(id order by random()) from h) || coalesce((select array_agg(id order by random()) from t), '{}')
+    into res;
+    return res;
+  end if;
   if base in ('survival', 'survival2') then
     -- Bỏ câu trùng cả đề lẫn ảnh; thứ tự bốc ngẫu nhiên (không sắp theo id)
     n_img := case kind when 'img' then 30 when 'text' then 0 when 'mix' then 21 else 30 end;
