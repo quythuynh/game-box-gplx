@@ -120,6 +120,7 @@ function initApp() {
     state.rejoining = false;
     state.roomCode = room.code || state.roomCode;
     state.gameMode = room.mode || state.gameMode;
+    questions = Live.reorder(questions, room);
     Live.hideCountdown();
     if (state.isSpectator) {
       state.exam30 = questions;
@@ -220,6 +221,7 @@ function initApp() {
 
   // Kết thúc ván đấu
   socket.on('game-ended', ({ rankings, room, questions }) => {
+    questions = Live.reorder(questions, room && room.startedAt ? room : undefined);
     Live.sortRankings(rankings);
     Live.stopSync();
     Live.clearGame();
@@ -350,6 +352,8 @@ function checkUrlParamsForAutoJoin() {
 
 // ================= LOBBY EVENTS =================
 function setupLobbyEvents() {
+  // Nạp sẵn 600 câu để Sinh tồn bốc đề tại chỗ (cùng hạt giống cho cả phòng)
+  get600Questions().then(list => Live.setPool(list)).catch(() => { /* dùng đề của server */ });
   // Nhớ lựa chọn lần trước ở sảnh (chế độ, thời gian, chế độ học tập)
   const modeSel = document.getElementById('gameModeSelect');
   const timeSel = document.getElementById('gameTimeSelect');

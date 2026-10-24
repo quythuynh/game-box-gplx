@@ -282,6 +282,67 @@ const Live = (() => {
     const rest = Object.entries(opts || {}).filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => `${k}=${v}`).join(';');
     return rest ? `${base}~${rest}` : base;
   }
+  // ---- Bốc đề Sinh tồn ngay trên trình duyệt ----
+  // Mọi người trong phòng cùng bốc từ 600 câu với cùng 1 hạt giống (mã phòng + giờ bắt đầu) nên ra cùng 1 đề,
+  // thứ tự ngẫu nhiên hoàn toàn (không sắp theo id): câu hình có thể nằm ngay câu 1.
+  let pool = null;
+  function setPool(list) { if (Array.isArray(list) && list.length) pool = list; }
+  function seeded(str) {
+    let h = 1779033703 ^ str.length;
+    for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+    let a = h >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function shuffled(arr, rnd) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  }
+  function pickSurvival(code, startedAt, opts) {
+    const rnd = seeded(`${code}:${startedAt}`);
+    const seen = new Set();
+    const uniq = shuffled(pool, rnd).filter(q => {
+      const key = q.question + '|' + (q.image || '');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const n = 30;
+    const count = [10, 20, 30].includes(Number(opts.c)) ? Number(opts.c) : 20;
+    const img = uniq.filter(q => q.image);
+    const txt = uniq.filter(q => !q.image);
+    switch (opts.k) {
+      case 'signs': return uniq.filter(q => q.chapter === 5 || q.chapter === 6).slice(0, n);
+      case 'law': return uniq.filter(q => q.chapter <= 4).slice(0, n);
+      case 'img': return img.slice(0, n);
+      case 'text': return txt.slice(0, n);
+      case 'mix': {
+        const nImg = Math.round(count * 0.7);
+        const head = shuffled([...img.slice(0, nImg), ...txt.slice(0, count - nImg)], rnd);
+        const used = new Set(head.map(q => q.id));
+        return [...head, ...uniq.filter(q => !used.has(q.id)).slice(0, n - count)];
+      }
+      default: return uniq.slice(0, n);
+    }
+  }
+  // Đổi đề do server gửi sang đề bốc tại chỗ (chỉ với Sinh tồn). Không đủ dữ liệu thì giữ nguyên đề của server.
+  function reorder(questions, room) {
+    const mode = (room && room.mode) || state.gameMode;
+    const { base, opts } = parseMode(mode);
+    if (base !== 'survival' && base !== 'survival2') return questions;
+    const code = (room && room.code) || state.roomCode;
+    const startedAt = (room && room.startedAt) || state.startedAt;
+    if (!pool || !code || !startedAt) return questions;
+    const list = pickSurvival(code, startedAt, opts);
+    return list.length >= 10 ? list : questions;
+  }
+
   function survTotal() {
     const n = Number(parseMode(state.gameMode).opts.c);
     return [10, 20, 30].includes(n) ? n : 20;
@@ -1276,7 +1337,7 @@ const Live = (() => {
   return {
     prepareSession, beginSession, clearSession, leaveAndReload, tryRejoin,
     saveGame, restoreGame, clearGame, toast, netDown, netUp,
-    isReady, toggleReady, readyCounts, modeLabel, buildMode, parseMode, sendChat, renderChat,
+    isReady, toggleReady, readyCounts, modeLabel, buildMode, parseMode, setPool, reorder, sendChat, renderChat,
     hostStart, hideCountdown, onRoomState, onFx, timeToast, onPeerProgress, onPeerSubmitted, onPeerLeft, onRestart,
     updateRace, isLive, isSyncMode, onSpectatorStart, modeRules, shareResult, buzz, questionCount, dot, teamBadge, voteRematch, updateRematchUi, poke, onExamStart, canAnswer, onAnswered, blockNav, revealNow, afterRender,
     stopSync, sortRankings, decorateResult, paletteRes, seenCount,
